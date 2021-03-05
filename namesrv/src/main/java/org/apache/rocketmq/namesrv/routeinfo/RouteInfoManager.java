@@ -49,10 +49,20 @@ public class RouteInfoManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
     private final static long BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
+
+    // topic消息队列路由信息，消息发送（producer发送？）时根据路由表进行负载均衡,一个topic拥有多个消息队列，一个broker默认为每个topic创建4个读队列4个写队列
     private final HashMap<String/* topic */, List<QueueData>> topicQueueTable;
+
+    // broker基础信息
     private final HashMap<String/* brokerName */, BrokerData> brokerAddrTable;
+
+    // broker集群信息 一个集群:多个brokerName
     private final HashMap<String/* clusterName */, Set<String/* brokerName */>> clusterAddrTable;
+
+    // 每一台broker状态信息，NameServer每次收到broker的心跳包都会替换该信息
     private final HashMap<String/* brokerAddr */, BrokerLiveInfo> brokerLiveTable;
+
+    // broker的FilterServer列表，用于类模式消息过滤
     private final HashMap<String/* brokerAddr */, List<String>/* Filter Server */> filterServerTable;
 
     public RouteInfoManager() {
@@ -99,6 +109,18 @@ public class RouteInfoManager {
         return topicList.encode();
     }
 
+    /**
+     *
+     * @param clusterName
+     * @param brokerAddr
+     * @param brokerName
+     * @param brokerId
+     * @param haServerAddr
+     * @param topicConfigWrapper
+     * @param filterServerList
+     * @param channel
+     * @return
+     */
     public RegisterBrokerResult registerBroker(
         final String clusterName,
         final String brokerAddr,
@@ -142,6 +164,7 @@ public class RouteInfoManager {
                 String oldAddr = brokerData.getBrokerAddrs().put(brokerId, brokerAddr);
                 registerFirst = registerFirst || (null == oldAddr);
 
+                // 根据topicConfig设置QueueData
                 if (null != topicConfigWrapper
                     && MixAll.MASTER_ID == brokerId) {
                     if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
@@ -207,6 +230,10 @@ public class RouteInfoManager {
         return null;
     }
 
+    /**
+     * 更新lastUpdateTimestamp
+     * @param brokerAddr
+     */
     public void updateBrokerInfoUpdateTimestamp(final String brokerAddr) {
         BrokerLiveInfo prev = this.brokerLiveTable.get(brokerAddr);
         if (prev != null) {
@@ -214,6 +241,11 @@ public class RouteInfoManager {
         }
     }
 
+    /**
+     * 根据topic配置设置topicQueueTable
+     * @param brokerName
+     * @param topicConfig
+     */
     private void createAndUpdateQueueData(final String brokerName, final TopicConfig topicConfig) {
         QueueData queueData = new QueueData();
         queueData.setBrokerName(brokerName);
@@ -426,13 +458,19 @@ public class RouteInfoManager {
         return null;
     }
 
+    /**
+     * 移出处于非激活状态的broker
+     */
     public void scanNotActiveBroker() {
         Iterator<Entry<String, BrokerLiveInfo>> it = this.brokerLiveTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, BrokerLiveInfo> next = it.next();
+            // 上次收到心跳包的时间+120s若小于当前时间，则认为broker不可用，移出
             long last = next.getValue().getLastUpdateTimestamp();
             if ((last + BROKER_CHANNEL_EXPIRED_TIME) < System.currentTimeMillis()) {
+                // 关闭channel
                 RemotingUtil.closeChannel(next.getValue().getChannel());
+                // 移出
                 it.remove();
                 log.warn("The broker channel expired, {} {}ms", next.getKey(), BROKER_CHANNEL_EXPIRED_TIME);
                 this.onChannelDestroy(next.getKey(), next.getValue().getChannel());
@@ -752,10 +790,19 @@ public class RouteInfoManager {
     }
 }
 
+/**
+ * 一台broker的状态信息
+ */
 class BrokerLiveInfo {
+
+    // 上次nameServer收到心跳包的时间 myConfusion:多台NameServer收到心跳包的时间是如何同步的？如果不同步就有可能一台NameServer认为某个broker失效了，
+    //  但是broker其实给另一台NameServer发了心跳包了
     private long lastUpdateTimestamp;
     private DataVersion dataVersion;
+
+    // channel是broker作为客户端连接NameServer的客户端channel吗？
     private Channel channel;
+    // 连向的NameServer地址？
     private String haServerAddr;
 
     public BrokerLiveInfo(long lastUpdateTimestamp, DataVersion dataVersion, Channel channel,

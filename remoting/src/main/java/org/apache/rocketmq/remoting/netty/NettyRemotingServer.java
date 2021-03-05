@@ -63,6 +63,9 @@ import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * NettyServer网络处理类
+ */
 public class NettyRemotingServer extends NettyRemotingAbstract implements RemotingServer {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
     private final ServerBootstrap serverBootstrap;
@@ -115,6 +118,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         });
 
         if (useEpoll()) {
+            // myConfusion:负责接收连接的线程只设置一个吗？够用吗？
             this.eventLoopGroupBoss = new EpollEventLoopGroup(1, new ThreadFactory() {
                 private AtomicInteger threadIndex = new AtomicInteger(0);
 
@@ -124,6 +128,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 }
             });
 
+            // IO线程池,其实就是workerGroup,负责客户端连接之后的读写
             this.eventLoopGroupSelector = new EpollEventLoopGroup(nettyServerConfig.getServerSelectorThreads(), new ThreadFactory() {
                 private AtomicInteger threadIndex = new AtomicInteger(0);
                 private int threadTotal = nettyServerConfig.getServerSelectorThreads();
@@ -179,8 +184,14 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             && Epoll.isAvailable();
     }
 
+    /**
+     * 启动netty服务端--其实2、3、4都是之前看的（netty权威指南）netty服务端的启动流程
+     *
+     * myConfusion:此处是broker或NameServer作为netty服务端启动？broker也需要作为客户端吧，比如发心跳包给NameServer
+     */
     @Override
     public void start() {
+        // 1. 新建defaultEventExecutorGroup 业务线程池
         this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
             nettyServerConfig.getServerWorkerThreads(),
             new ThreadFactory() {
@@ -193,8 +204,10 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 }
             });
 
+        // 2.新建如下需要用到的handler
         prepareSharableHandlers();
 
+        // 3. 初始化serverBootstrap、编排服务端pipeline
         ServerBootstrap childHandler =
             this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector)
                 .channel(useEpoll() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
@@ -208,7 +221,10 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override
                     public void initChannel(SocketChannel ch) throws Exception {
+                        // myConfusionsv:只有headHandler+tailHandler才被eventLoopGroupSelector中的线程池执行吗？--应该是，
+                        // 只有与channel交互的读与写才用IO线程池执行，其他业务handler在defaultEventExecutorGroup中执行
                         ch.pipeline()
+                                // 执行handshakeHandler的线程池是defaultEventExecutorGroup
                             .addLast(defaultEventExecutorGroup, HANDSHAKE_HANDLER_NAME, handshakeHandler)
                             .addLast(defaultEventExecutorGroup,
                                 encoder,
@@ -225,6 +241,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
 
         try {
+            // 4. 服务端channel绑定
             ChannelFuture sync = this.serverBootstrap.bind().sync();
             InetSocketAddress addr = (InetSocketAddress) sync.channel().localAddress();
             this.port = addr.getPort();
@@ -236,6 +253,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             this.nettyEventExecutor.start();
         }
 
+        // 5. 定时任务 过滤不支持的请求
         this.timer.scheduleAtFixedRate(new TimerTask() {
 
             @Override
@@ -249,6 +267,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }, 1000 * 3, 1000);
     }
 
+    /**
+     * 终止
+     */
     @Override
     public void shutdown() {
         try {

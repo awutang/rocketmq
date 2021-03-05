@@ -41,6 +41,9 @@ public class KVConfigManager {
         this.namesrvController = namesrvController;
     }
 
+    /**
+     * 加载KV配置 myConfusion:KV配置到底是啥？
+     */
     public void load() {
         String content = null;
         try {
@@ -169,6 +172,9 @@ public class KVConfigManager {
         return null;
     }
 
+    /**
+     * 每隔10min打印一次KV配置
+     */
     public void printAllPeriodically() {
         try {
             this.lock.readLock().lockInterruptibly();

@@ -848,12 +848,17 @@ public class BrokerController {
         return this.brokerConfig.getBrokerIP1() + ":" + this.nettyServerConfig.getListenPort();
     }
 
+    /**
+     * broker启动
+     * @throws Exception
+     */
     public void start() throws Exception {
         if (this.messageStore != null) {
             this.messageStore.start();
         }
 
         if (this.remotingServer != null) {
+            // broker作为netty服务端启动
             this.remotingServer.start();
         }
 
@@ -866,6 +871,7 @@ public class BrokerController {
         }
 
         if (this.brokerOuterAPI != null) {
+            // broker作为netty客户端启动
             this.brokerOuterAPI.start();
         }
 
@@ -887,6 +893,7 @@ public class BrokerController {
             this.registerBrokerAll(true, false, true);
         }
 
+        // broker发送心跳包（是给所有NameServer机器)
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -897,6 +904,7 @@ public class BrokerController {
                     log.error("registerBrokerAll Exception", e);
                 }
             }
+            // 10s后每30s执行一次
         }, 1000 * 10, Math.max(10000, Math.min(brokerConfig.getRegisterNameServerPeriod(), 60000)), TimeUnit.MILLISECONDS);
 
         if (this.brokerStatsManager != null) {
@@ -928,6 +936,12 @@ public class BrokerController {
         doRegisterBrokerAll(true, false, topicConfigSerializeWrapper);
     }
 
+    /**
+     * 向所有NameServer注册broker
+     * @param checkOrderConfig
+     * @param oneway
+     * @param forceRegister
+     */
     public synchronized void registerBrokerAll(final boolean checkOrderConfig, boolean oneway, boolean forceRegister) {
         TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
 
@@ -948,12 +962,21 @@ public class BrokerController {
             this.brokerConfig.getBrokerName(),
             this.brokerConfig.getBrokerId(),
             this.brokerConfig.getRegisterBrokerTimeoutMills())) {
+            // 注册
             doRegisterBrokerAll(checkOrderConfig, oneway, topicConfigWrapper);
         }
     }
 
+    /**
+     * 注册
+     * @param checkOrderConfig
+     * @param oneway
+     * @param topicConfigWrapper
+     */
     private void doRegisterBrokerAll(boolean checkOrderConfig, boolean oneway,
         TopicConfigSerializeWrapper topicConfigWrapper) {
+
+        // 注册
         List<RegisterBrokerResult> registerBrokerResultList = this.brokerOuterAPI.registerBrokerAll(
             this.brokerConfig.getBrokerClusterName(),
             this.getBrokerAddr(),

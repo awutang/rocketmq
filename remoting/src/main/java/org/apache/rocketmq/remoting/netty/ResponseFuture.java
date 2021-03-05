@@ -72,6 +72,10 @@ public class ResponseFuture {
         return this.responseCommand;
     }
 
+    /**
+     * 设置response就countDown
+     * @param responseCommand
+     */
     public void putResponse(final RemotingCommand responseCommand) {
         this.responseCommand = responseCommand;
         this.countDownLatch.countDown();

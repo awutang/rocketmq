@@ -55,9 +55,15 @@ public class BrokerStartup {
     public static InternalLogger log;
 
     public static void main(String[] args) {
+        // 创建brokerController并启动
         start(createBrokerController(args));
     }
 
+    /**
+     * broker启动
+     * @param controller
+     * @return
+     */
     public static BrokerController start(BrokerController controller) {
         try {
 
@@ -87,6 +93,11 @@ public class BrokerStartup {
         }
     }
 
+    /**
+     * 创建BrokerController
+     * @param args
+     * @return
+     */
     public static BrokerController createBrokerController(String[] args) {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
 

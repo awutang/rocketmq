@@ -166,6 +166,11 @@ public abstract class NettyRemotingAbstract {
         }
     }
 
+    /**
+     * 执行before hook
+     * @param addr
+     * @param request
+     */
     protected void doBeforeRpcHooks(String addr, RemotingCommand request) {
         if (rpcHooks.size() > 0) {
             for (RPCHook rpcHook: rpcHooks) {
@@ -174,6 +179,12 @@ public abstract class NettyRemotingAbstract {
         }
     }
 
+    /**
+     * 执行after hook
+     * @param addr
+     * @param request
+     * @param response
+     */
     protected void doAfterRpcHooks(String addr, RemotingCommand request, RemotingCommand response) {
         if (rpcHooks.size() > 0) {
             for (RPCHook rpcHook: rpcHooks) {
@@ -404,6 +415,16 @@ public abstract class NettyRemotingAbstract {
         }
     }
 
+    /**
+     * 发送
+     * @param channel
+     * @param request
+     * @param timeoutMillis
+     * @return
+     * @throws InterruptedException
+     * @throws RemotingSendRequestException
+     * @throws RemotingTimeoutException
+     */
     public RemotingCommand invokeSyncImpl(final Channel channel, final RemotingCommand request,
         final long timeoutMillis)
         throws InterruptedException, RemotingSendRequestException, RemotingTimeoutException {
@@ -413,6 +434,8 @@ public abstract class NettyRemotingAbstract {
             final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, timeoutMillis, null, null);
             this.responseTable.put(opaque, responseFuture);
             final SocketAddress addr = channel.remoteAddress();
+            // 发送 此处将request写到channel发给服务端,然后阻塞等待服务端nameServer返回（NIO线程监听返回，
+            // 若有返回则读取最终触发到fireChannelRead()(此方法中执行了responseFuture.put(response))）
             channel.writeAndFlush(request).addListener(new ChannelFutureListener() {
                 @Override
                 public void operationComplete(ChannelFuture f) throws Exception {
@@ -430,6 +453,7 @@ public abstract class NettyRemotingAbstract {
                 }
             });
 
+            // 阻塞一直等到nameServer返回并broker读取到响应
             RemotingCommand responseCommand = responseFuture.waitResponse(timeoutMillis);
             if (null == responseCommand) {
                 if (responseFuture.isSendRequestOK()) {

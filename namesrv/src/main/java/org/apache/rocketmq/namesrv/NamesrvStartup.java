@@ -41,6 +41,9 @@ import org.apache.rocketmq.srvutil.ServerUtil;
 import org.apache.rocketmq.srvutil.ShutdownHookThread;
 import org.slf4j.LoggerFactory;
 
+/**
+ * NameServer启动类
+ */
 public class NamesrvStartup {
 
     private static InternalLogger log;
@@ -54,7 +57,10 @@ public class NamesrvStartup {
     public static NamesrvController main0(String[] args) {
 
         try {
+            // 1. 创建NamesrvController实例
             NamesrvController controller = createNamesrvController(args);
+
+            // 2. 启动NameServer
             start(controller);
             String tip = "The Name Server boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
             log.info(tip);
@@ -68,6 +74,13 @@ public class NamesrvStartup {
         return null;
     }
 
+    /**
+     * 根据配置创建NamesrvController实例
+     * @param args
+     * @return
+     * @throws IOException
+     * @throws JoranException
+     */
     public static NamesrvController createNamesrvController(String[] args) throws IOException, JoranException {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
         //PackageConflictDetect.detectFastjson();
@@ -79,6 +92,7 @@ public class NamesrvStartup {
             return null;
         }
 
+        // 1. 解析配置文件，填充namesrvConfig（NameServer业务参数）、nettyServerConfig（NameServer网络参数）
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
         nettyServerConfig.setListenPort(9876);
@@ -123,6 +137,7 @@ public class NamesrvStartup {
         MixAll.printObjectProperties(log, namesrvConfig);
         MixAll.printObjectProperties(log, nettyServerConfig);
 
+        // 2. 创建NamesrvController实例
         final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
 
         // remember all configs to prevent discard
@@ -131,26 +146,38 @@ public class NamesrvStartup {
         return controller;
     }
 
+    /**
+     * 启动NameServer
+     * @param controller
+     * @return
+     * @throws Exception
+     */
     public static NamesrvController start(final NamesrvController controller) throws Exception {
 
         if (null == controller) {
             throw new IllegalArgumentException("NamesrvController is null");
         }
 
+        // 1. 初始化NamesrvController对象
         boolean initResult = controller.initialize();
         if (!initResult) {
             controller.shutdown();
             System.exit(-3);
         }
 
+        // 2. 添加virtual-machine shutdown hook（When the virtual machine begins its shutdown sequence it will
+        //     * start all registered shutdown hooks in some unspecified order and let
+        //     * them run concurrently.）
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
             @Override
             public Void call() throws Exception {
+                // 优雅停机 在jvm进程关闭之前先关闭线程池
                 controller.shutdown();
                 return null;
             }
         }));
 
+        // 3. 启动nameServer,broker与producer对于NameServer来说就是netty客户端
         controller.start();
 
         return controller;

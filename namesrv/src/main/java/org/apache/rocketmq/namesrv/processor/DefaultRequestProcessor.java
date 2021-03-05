@@ -86,6 +86,8 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
                 return this.getKVConfig(ctx, request);
             case RequestCode.DELETE_KV_CONFIG:
                 return this.deleteKVConfig(ctx, request);
+
+                // QUERY_DATA_VERSION代表心跳检测包？
             case RequestCode.QUERY_DATA_VERSION:
                 return queryBrokerTopicConfig(ctx, request);
             case RequestCode.REGISTER_BROKER:
