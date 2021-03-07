@@ -153,7 +153,9 @@ public class BrokerOuterAPI {
             // 当前broker消息服务器所属broker集群
             requestHeader.setClusterName(clusterName);
             // myConfusion:master地址？slave向nameServer注册后返回？HA代表高可用，那这个地址是为了高可用？
+            // --haServerAddr:this.brokerConfig.getBrokerIP2() + ":" + this.messageStoreConfig.getHaListenPort();
             requestHeader.setHaServerAddr(haServerAddr);
+            // 压缩
             requestHeader.setCompressed(compressed);
 
             // 3. body

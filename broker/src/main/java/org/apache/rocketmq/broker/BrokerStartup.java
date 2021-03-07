@@ -125,6 +125,8 @@ public class BrokerStartup {
             nettyClientConfig.setUseTLS(Boolean.parseBoolean(System.getProperty(TLS_ENABLE,
                 String.valueOf(TlsSystemConfig.tlsMode == TlsMode.ENFORCING))));
             nettyServerConfig.setListenPort(10911);
+
+            // brokerRole默认是ASYNC_MASTER myConfusion:broker是是啥时候指定成slave的呢？
             final MessageStoreConfig messageStoreConfig = new MessageStoreConfig();
 
             if (BrokerRole.SLAVE == messageStoreConfig.getBrokerRole()) {
@@ -174,6 +176,7 @@ public class BrokerStartup {
             }
 
             switch (messageStoreConfig.getBrokerRole()) {
+                // 由于brokerRole默认是ASYNC_MASTER，因此brokerId设置为0
                 case ASYNC_MASTER:
                 case SYNC_MASTER:
                     brokerConfig.setBrokerId(MixAll.MASTER_ID);

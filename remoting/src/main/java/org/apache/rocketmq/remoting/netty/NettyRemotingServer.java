@@ -187,7 +187,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     /**
      * 启动netty服务端--其实2、3、4都是之前看的（netty权威指南）netty服务端的启动流程
      *
-     * myConfusion:此处是broker或NameServer作为netty服务端启动？broker也需要作为客户端吧，比如发心跳包给NameServer
+     * myConfusionsv:此处是broker或NameServer作为netty服务端启动？--是的 broker也需要作为客户端吧，比如发心跳包给NameServer--是的
      */
     @Override
     public void start() {
@@ -370,6 +370,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         serverHandler = new NettyServerHandler();
     }
 
+    /**
+     * 三次握手？应该不是，三次握手在connect()+accept()中已经完成了，那此处的handShake是为了啥？SSL？--是的
+     */
     @ChannelHandler.Sharable
     class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
@@ -388,6 +391,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
             // TLS handshake
             msg.markReaderIndex();
 
+            // 获取index=0处的字节
             byte b = msg.getByte(0);
 
             if (b == HANDSHAKE_MAGIC_CODE) {
@@ -433,6 +437,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * nameServer收到broker请求
+     */
     @ChannelHandler.Sharable
     class NettyServerHandler extends SimpleChannelInboundHandler<RemotingCommand> {
 

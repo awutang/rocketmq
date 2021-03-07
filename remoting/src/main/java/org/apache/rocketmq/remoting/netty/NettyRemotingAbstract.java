@@ -154,6 +154,7 @@ public abstract class NettyRemotingAbstract {
         final RemotingCommand cmd = msg;
         if (cmd != null) {
             switch (cmd.getType()) {
+                // request
                 case REQUEST_COMMAND:
                     processRequestCommand(ctx, cmd);
                     break;
@@ -202,6 +203,8 @@ public abstract class NettyRemotingAbstract {
      */
     public void processRequestCommand(final ChannelHandlerContext ctx, final RemotingCommand cmd) {
         final Pair<NettyRequestProcessor, ExecutorService> matched = this.processorTable.get(cmd.getCode());
+
+        // REGISTER_BROKER没有对应的NettyRequestProcessor，采用defaultRequestProcessor
         final Pair<NettyRequestProcessor, ExecutorService> pair = null == matched ? this.defaultRequestProcessor : matched;
         final int opaque = cmd.getOpaque();
 
@@ -236,6 +239,7 @@ public abstract class NettyRemotingAbstract {
                             processor.asyncProcessRequest(ctx, cmd, callback);
                         } else {
                             NettyRequestProcessor processor = pair.getObject1();
+                            // 处理
                             RemotingCommand response = processor.processRequest(ctx, cmd);
                             callback.callback(response);
                         }

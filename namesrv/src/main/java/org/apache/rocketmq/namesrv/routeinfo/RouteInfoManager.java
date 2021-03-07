@@ -50,7 +50,7 @@ public class RouteInfoManager {
     private final static long BROKER_CHANNEL_EXPIRED_TIME = 1000 * 60 * 2;
     private final ReadWriteLock lock = new ReentrantReadWriteLock();
 
-    // topic消息队列路由信息，消息发送（producer发送？）时根据路由表进行负载均衡,一个topic拥有多个消息队列，一个broker默认为每个topic创建4个读队列4个写队列
+    // topic消息队列路由信息，消息发送（producer发送？）时根据路由表进行负载均衡选择broker,一个topic拥有多个消息队列，一个broker默认为每个topic创建4个读队列4个写队列
     private final HashMap<String/* topic */, List<QueueData>> topicQueueTable;
 
     // broker基础信息
@@ -110,7 +110,7 @@ public class RouteInfoManager {
     }
 
     /**
-     *
+     * nameServer中接收broker的注册，看下haServerAddr是broker master吗？
      * @param clusterName
      * @param brokerAddr
      * @param brokerName
@@ -133,8 +133,11 @@ public class RouteInfoManager {
         RegisterBrokerResult result = new RegisterBrokerResult();
         try {
             try {
+                // 1. 路由注册加写锁，防止并发修改路由表(topicQueueTable、brokerAddrTable、brokerLiveTable、filterServerTable)，
+                // 但是producer读取这些路由信息时可以并发读
                 this.lock.writeLock().lockInterruptibly();
 
+                // 2. 判断broker所属集群是否存在，不存在则创建（clusterAddrTable维护）
                 Set<String> brokerNames = this.clusterAddrTable.get(clusterName);
                 if (null == brokerNames) {
                     brokerNames = new HashSet<String>();
@@ -142,8 +145,10 @@ public class RouteInfoManager {
                 }
                 brokerNames.add(brokerName);
 
+                // 3. brokerAddrTable维护
                 boolean registerFirst = false;
 
+                // 3.1 对不同情况的处理
                 BrokerData brokerData = this.brokerAddrTable.get(brokerName);
                 if (null == brokerData) {
                     registerFirst = true;
@@ -151,24 +156,29 @@ public class RouteInfoManager {
                     this.brokerAddrTable.put(brokerName, brokerData);
                 }
                 Map<Long, String> brokerAddrsMap = brokerData.getBrokerAddrs();
+
+                // 3.2 删除brokerAdd相同但brokerId不同的broker(因为brokerId默认为0，因此这段的作用如下英文注释)
                 //Switch slave to master: first remove <1, IP:PORT> in namesrv, then add <0, IP:PORT>
                 //The same IP:PORT must only have one record in brokerAddrTable
                 Iterator<Entry<Long, String>> it = brokerAddrsMap.entrySet().iterator();
                 while (it.hasNext()) {
                     Entry<Long, String> item = it.next();
+                    // 若brokerAddrTable中存在同一台broker但brokerId不同，则删除
                     if (null != brokerAddr && brokerAddr.equals(item.getValue()) && brokerId != item.getKey()) {
                         it.remove();
                     }
                 }
 
+                // 3.3 覆盖相同brokerId,返回previous brokerAddr
                 String oldAddr = brokerData.getBrokerAddrs().put(brokerId, brokerAddr);
                 registerFirst = registerFirst || (null == oldAddr);
 
-                // 根据topicConfig设置QueueData
+                // 4. 根据topicConfig设置QueueData,topicQueueTable维护
                 if (null != topicConfigWrapper
                     && MixAll.MASTER_ID == brokerId) {
                     if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
                         || registerFirst) {
+                        // broker topic配置信息发生变化或首次注册则更新topicQueueTable(更新broker默认带的topicConfigTable中的topic对应的queueData)
                         ConcurrentMap<String, TopicConfig> tcTable =
                             topicConfigWrapper.getTopicConfigTable();
                         if (tcTable != null) {
@@ -179,6 +189,7 @@ public class RouteInfoManager {
                     }
                 }
 
+                // 5. 更新brokerLiveInfo，维度是brokerAddr
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
                     new BrokerLiveInfo(
                         System.currentTimeMillis(),
@@ -189,14 +200,18 @@ public class RouteInfoManager {
                     log.info("new broker registered, {} HAServer: {}", brokerAddr, haServerAddr);
                 }
 
+                // 6. 更新filterServerTable
                 if (filterServerList != null) {
                     if (filterServerList.isEmpty()) {
+                        // 若当前broker无filterServerList，则删除此broker的filterServer
                         this.filterServerTable.remove(brokerAddr);
                     } else {
+                        // 否则替换
                         this.filterServerTable.put(brokerAddr, filterServerList);
                     }
                 }
 
+                // 7.对同一个slave-master节点的处理，若当前broker为slave,则查找对应的master并将masterAddr设置在result中
                 if (MixAll.MASTER_ID != brokerId) {
                     String masterAddr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);
                     if (masterAddr != null) {
@@ -256,20 +271,24 @@ public class RouteInfoManager {
 
         List<QueueData> queueDataList = this.topicQueueTable.get(topicConfig.getTopicName());
         if (null == queueDataList) {
+            // 新建queueData
             queueDataList = new LinkedList<QueueData>();
             queueDataList.add(queueData);
             this.topicQueueTable.put(topicConfig.getTopicName(), queueDataList);
             log.info("new topic registered, {} {}", topicConfig.getTopicName(), queueData);
         } else {
+            // 更新queueData
             boolean addNewOne = true;
 
             Iterator<QueueData> it = queueDataList.iterator();
             while (it.hasNext()) {
                 QueueData qd = it.next();
+                // 已有的brokerName则更新
                 if (qd.getBrokerName().equals(brokerName)) {
                     if (qd.equals(queueData)) {
                         addNewOne = false;
                     } else {
+                        // 删除
                         log.info("topic changed, {} OLD: {} NEW: {}", topicConfig.getTopicName(), qd,
                             queueData);
                         it.remove();
@@ -278,6 +297,7 @@ public class RouteInfoManager {
             }
 
             if (addNewOne) {
+                // 新增
                 queueDataList.add(queueData);
             }
         }

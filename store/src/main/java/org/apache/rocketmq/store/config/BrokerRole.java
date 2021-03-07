@@ -16,6 +16,9 @@
  */
 package org.apache.rocketmq.store.config;
 
+/**
+ * broker角色
+ */
 public enum BrokerRole {
     ASYNC_MASTER,
     SYNC_MASTER,
