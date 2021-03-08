@@ -42,7 +42,7 @@ public class KVConfigManager {
     }
 
     /**
-     * 加载KV配置 myConfusion:KV配置到底是啥？
+     * 加载KV配置 myConfusionsv:KV配置到底是啥？--NameServer的配置参数
      */
     public void load() {
         String content = null;

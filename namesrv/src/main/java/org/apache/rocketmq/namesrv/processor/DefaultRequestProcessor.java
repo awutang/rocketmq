@@ -357,16 +357,25 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
         return response;
     }
 
+    /**
+     * 获取某一topic的路由信息，是producer在发送topic之前获取的吧？
+     * @param ctx
+     * @param request
+     * @return
+     * @throws RemotingCommandException
+     */
     public RemotingCommand getRouteInfoByTopic(ChannelHandlerContext ctx,
         RemotingCommand request) throws RemotingCommandException {
         final RemotingCommand response = RemotingCommand.createResponseCommand(null);
         final GetRouteInfoRequestHeader requestHeader =
             (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
 
+        // 1. 获取nameServer当前某topic陆游信息
         TopicRouteData topicRouteData = this.namesrvController.getRouteInfoManager().pickupTopicRouteData(requestHeader.getTopic());
 
         if (topicRouteData != null) {
             if (this.namesrvController.getNamesrvConfig().isOrderMessageEnable()) {
+                // 1.1 若nameServer当前某topic陆游信息不为空且当前nameServer支持顺序消息，则将相关配置设置到topicRouteData中
                 String orderTopicConf =
                     this.namesrvController.getKvConfigManager().getKVConfig(NamesrvUtil.NAMESPACE_ORDER_TOPIC_CONFIG,
                         requestHeader.getTopic());
@@ -377,9 +386,11 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
             response.setBody(content);
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
+
             return response;
         }
 
+        // 1.2 nameServer当前某topic陆游信息为空，则返回TOPIC_NOT_EXIST
         response.setCode(ResponseCode.TOPIC_NOT_EXIST);
         response.setRemark("No topic route info in name server for the topic: " + requestHeader.getTopic()
             + FAQUrl.suggestTodo(FAQUrl.APPLY_TOPIC_URL));

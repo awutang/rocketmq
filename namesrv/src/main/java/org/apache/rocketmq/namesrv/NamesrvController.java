@@ -95,7 +95,7 @@ public class NamesrvController {
 
             @Override
             public void run() {
-                // 移出处于非激活状态的broker
+                // 移出处于非激活状态的broker(5S后每隔10S执行)
                 NamesrvController.this.routeInfoManager.scanNotActiveBroker();
             }
         }, 5, 10, TimeUnit.SECONDS);

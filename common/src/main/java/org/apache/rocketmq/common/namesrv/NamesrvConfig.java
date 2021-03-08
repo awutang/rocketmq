@@ -34,7 +34,7 @@ public class NamesrvConfig {
 
     // rocketmq主目录，可以通过设置环境变量ROCKETMQ_HOME来指定
     private String rocketmqHome = System.getProperty(MixAll.ROCKETMQ_HOME_PROPERTY, System.getenv(MixAll.ROCKETMQ_HOME_ENV));
-    // NameServer存储KV配置属性的持久化路径
+    // NameServer存储KV配置属性的持久化路径 NameServer的配置参数
     private String kvConfigPath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "kvConfig.json";
     // nameServer默认配置文件路径，不生效
     private String configStorePath = System.getProperty("user.home") + File.separator + "namesrv" + File.separator + "namesrv.properties";
