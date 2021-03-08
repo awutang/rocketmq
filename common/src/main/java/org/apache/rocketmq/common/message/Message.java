@@ -25,9 +25,16 @@ import java.util.Map;
 public class Message implements Serializable {
     private static final long serialVersionUID = 8445773977080406428L;
 
+    // 消息所属主题
     private String topic;
+
+    // 消息flag(消息服务器不作处理)
     private int flag;
+
+    // 扩展属性
     private Map<String, String> properties;
+
+    // 消息体
     private byte[] body;
     private String transactionId;
 
@@ -43,10 +50,12 @@ public class Message implements Serializable {
         this.flag = flag;
         this.body = body;
 
+        // 扩展属性property
         if (tags != null && tags.length() > 0)
             this.setTags(tags);
 
         if (keys != null && keys.length() > 0)
+            // 快速检索消息
             this.setKeys(keys);
 
         this.setWaitStoreMsgOK(waitStoreMsgOK);
@@ -60,6 +69,10 @@ public class Message implements Serializable {
         this(topic, tags, keys, 0, body, true);
     }
 
+    /**
+     * 多个key用','隔开，用于快速检索消息
+     * @param keys
+     */
     public void setKeys(String keys) {
         this.putProperty(MessageConst.PROPERTY_KEYS, keys);
     }
@@ -118,6 +131,10 @@ public class Message implements Serializable {
         return this.getProperty(MessageConst.PROPERTY_TAGS);
     }
 
+    /**
+     * 消息tag,用于过滤
+     * @param tags
+     */
     public void setTags(String tags) {
         this.putProperty(MessageConst.PROPERTY_TAGS, tags);
     }
@@ -145,6 +162,10 @@ public class Message implements Serializable {
         return 0;
     }
 
+    /**
+     * 消息延迟级别，用于定时消息或消息重试
+     * @param level
+     */
     public void setDelayTimeLevel(int level) {
         this.putProperty(MessageConst.PROPERTY_DELAY_TIME_LEVEL, String.valueOf(level));
     }
@@ -157,6 +178,10 @@ public class Message implements Serializable {
         return Boolean.parseBoolean(result);
     }
 
+    /**
+     * 消息发送时是否等消息存储好后再返回
+     * @param waitStoreMsgOK
+     */
     public void setWaitStoreMsgOK(boolean waitStoreMsgOK) {
         this.putProperty(MessageConst.PROPERTY_WAIT_STORE_MSG_OK, Boolean.toString(waitStoreMsgOK));
     }
