@@ -26,7 +26,7 @@ import java.util.List;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
 /**
- * rocketmq路由结果
+ * rocketmq的topic的路由结果
  */
 public class TopicRouteData extends RemotingSerializable {
     // 顺序消息配置内容,来自于kvConfig

@@ -21,12 +21,12 @@
 package org.apache.rocketmq.common.protocol.route;
 
 /**
- * topic的队列信息
+ * topic的路由信息中的队列信息
  */
 public class QueueData implements Comparable<QueueData> {
     // topic对应的broker
     private String brokerName;
-    // 读队列
+    // 读队列 默认4
     private int readQueueNums;
     // 写队列 默认4
     private int writeQueueNums;

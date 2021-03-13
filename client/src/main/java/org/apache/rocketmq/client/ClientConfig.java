@@ -62,6 +62,11 @@ public class ClientConfig {
 
     private LanguageCode language = LanguageCode.JAVA;
 
+    /**
+     * 新建clientId,同一台服务器不同进程clientId不同（因为instanceName不同），但是同一个进程的不同producer或consumer的clientId一样，
+     * 所以导致对应的MQClientInstance对象相同
+     * @return
+     */
     public String buildMQClientId() {
         StringBuilder sb = new StringBuilder();
         sb.append(this.getClientIP());

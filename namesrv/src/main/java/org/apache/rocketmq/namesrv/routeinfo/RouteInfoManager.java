@@ -110,7 +110,7 @@ public class RouteInfoManager {
     }
 
     /**
-     * nameServer中接收broker的注册，看下haServerAddr是broker master吗？
+     * nameServer中接收broker的注册，看下haServerAddr是broker master吗？--不是
      * @param clusterName
      * @param brokerAddr
      * @param brokerName
@@ -178,7 +178,8 @@ public class RouteInfoManager {
                     && MixAll.MASTER_ID == brokerId) {
                     if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
                         || registerFirst) {
-                        // broker topic配置信息发生变化或首次注册则更新topicQueueTable(更新broker默认带的topicConfigTable中的topic对应的queueData)
+                        // broker topic配置信息发生变化或首次注册则更新topicQueueTable(更新broker默认带的topicConfigTable中的topic对应的queueData
+                        // --其实就是为默认topic注册路由信息（将当前active broker添加到路由信息中去），为了给producer根据topicName查询路由信息用)
                         ConcurrentMap<String, TopicConfig> tcTable =
                             topicConfigWrapper.getTopicConfigTable();
                         if (tcTable != null) {

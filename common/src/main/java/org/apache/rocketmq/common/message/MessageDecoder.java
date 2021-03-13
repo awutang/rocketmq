@@ -442,6 +442,11 @@ public class MessageDecoder {
         return map;
     }
 
+    /**
+     * 单条消息编码，固定格式（6块），在服务端会按照这种格式进行解码，从而得到每一条消息（批量消息发送与单条消息发送的唯一区别）
+     * @param message
+     * @return
+     */
     public static byte[] encodeMessage(Message message) {
         //only need flag, body, properties
         byte[] body = message.getBody();
@@ -513,17 +518,24 @@ public class MessageDecoder {
         return message;
     }
 
+    /**
+     * 多条消息编码成byte[]
+     * @param messages
+     * @return
+     */
     public static byte[] encodeMessages(List<Message> messages) {
         //TO DO refactor, accumulate in one buffer, avoid copies
         List<byte[]> encodedMessages = new ArrayList<byte[]>(messages.size());
         int allSize = 0;
         for (Message message : messages) {
+            // 单条消息编码
             byte[] tmp = encodeMessage(message);
             encodedMessages.add(tmp);
             allSize += tmp.length;
         }
         byte[] allBytes = new byte[allSize];
         int pos = 0;
+        // 汇合
         for (byte[] bytes : encodedMessages) {
             System.arraycopy(bytes, 0, allBytes, pos, bytes.length);
             pos += bytes.length;

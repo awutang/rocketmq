@@ -71,7 +71,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
     }
 
     /**
-     * 处理request
+     * nameServer作为服务端处理request
      * @param ctx
      * @param request
      * @return
@@ -358,7 +358,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
     }
 
     /**
-     * 获取某一topic的路由信息，是producer在发送topic之前获取的吧？
+     * 获取某一topic的路由信息，是producer在发送topic之前获取的吧？--是的
      * @param ctx
      * @param request
      * @return
@@ -370,12 +370,12 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
         final GetRouteInfoRequestHeader requestHeader =
             (GetRouteInfoRequestHeader) request.decodeCommandCustomHeader(GetRouteInfoRequestHeader.class);
 
-        // 1. 获取nameServer当前某topic陆游信息
+        // 1. 获取nameServer当前某topic路由信息
         TopicRouteData topicRouteData = this.namesrvController.getRouteInfoManager().pickupTopicRouteData(requestHeader.getTopic());
 
         if (topicRouteData != null) {
             if (this.namesrvController.getNamesrvConfig().isOrderMessageEnable()) {
-                // 1.1 若nameServer当前某topic陆游信息不为空且当前nameServer支持顺序消息，则将相关配置设置到topicRouteData中
+                // 1.1 若nameServer当前某topic路由信息不为空且当前nameServer支持顺序消息，则将相关配置设置到topicRouteData中
                 String orderTopicConf =
                     this.namesrvController.getKvConfigManager().getKVConfig(NamesrvUtil.NAMESPACE_ORDER_TOPIC_CONFIG,
                         requestHeader.getTopic());

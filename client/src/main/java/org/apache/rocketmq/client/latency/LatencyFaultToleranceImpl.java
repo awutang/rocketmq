@@ -24,11 +24,22 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.rocketmq.client.common.ThreadLocalIndex;
 
+/**
+ * broker故障延迟机制
+ */
 public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> {
+
+    // brokerName:FaultItem
     private final ConcurrentHashMap<String, FaultItem> faultItemTable = new ConcurrentHashMap<String, FaultItem>(16);
 
     private final ThreadLocalIndex whichItemWorst = new ThreadLocalIndex();
 
+    /**
+     * 更新失败条目
+     * @param name：brokerName
+     * @param currentLatency:消息发送故障延迟时间
+     * @param notAvailableDuration：不可用时长，在这段期间内，broker将被规避
+     */
     @Override
     public void updateFaultItem(final String name, final long currentLatency, final long notAvailableDuration) {
         FaultItem old = this.faultItemTable.get(name);
@@ -48,20 +59,34 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
         }
     }
 
+    /**
+     * 判断broker是否可用
+     * @param name
+     * @return
+     */
     @Override
     public boolean isAvailable(final String name) {
         final FaultItem faultItem = this.faultItemTable.get(name);
         if (faultItem != null) {
+            // 如果当前broker之前加入过规避范围，则判断是否已经可用了
             return faultItem.isAvailable();
         }
         return true;
     }
 
+    /**
+     * 移出fault条目， 意味着可以重新进入路由选择范围
+     * @param name
+     */
     @Override
     public void remove(final String name) {
         this.faultItemTable.remove(name);
     }
 
+    /**
+     * 从规避的broker slave-master中选择一台broker
+     * @return
+     */
     @Override
     public String pickOneAtLeast() {
         final Enumeration<FaultItem> elements = this.faultItemTable.elements();
@@ -96,9 +121,15 @@ public class LatencyFaultToleranceImpl implements LatencyFaultTolerance<String> 
             '}';
     }
 
+    /**
+     * 失败条目
+     */
     class FaultItem implements Comparable<FaultItem> {
+        // item唯一键，此处为brokerName
         private final String name;
+        // 本次消息发送延迟时间
         private volatile long currentLatency;
+        // 规避开始时间
         private volatile long startTimestamp;
 
         public FaultItem(final String name) {

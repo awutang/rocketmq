@@ -149,16 +149,19 @@ public abstract class NettyRemotingAbstract {
      * @param ctx Channel handler context.
      * @param msg incoming remoting command.
      * @throws Exception if there were any error while processing the incoming command.
+     *
+     * 另一端收到请求或相应之后的处理
      */
     public void processMessageReceived(ChannelHandlerContext ctx, RemotingCommand msg) throws Exception {
         final RemotingCommand cmd = msg;
         if (cmd != null) {
             switch (cmd.getType()) {
-                // request
                 case REQUEST_COMMAND:
+                    // request
                     processRequestCommand(ctx, cmd);
                     break;
                 case RESPONSE_COMMAND:
+                    // response
                     processResponseCommand(ctx, cmd);
                     break;
                 default:
@@ -197,6 +200,8 @@ public abstract class NettyRemotingAbstract {
 
     /**
      * Process incoming request command issued by remote peer.
+     *
+     * 从NettyServerHandler.channelRead0()触发
      *
      * @param ctx channel handler context.
      * @param cmd request command.
@@ -308,9 +313,11 @@ public abstract class NettyRemotingAbstract {
             responseTable.remove(opaque);
 
             if (responseFuture.getInvokeCallback() != null) {
+                // 如果当前响应对应的请求是async,则需要在得到响应后执行callback方法
                 executeInvokeCallback(responseFuture);
             } else {
                 responseFuture.putResponse(cmd);
+                // producer收到broker响应之后，释放在请求broker时获取的信号量
                 responseFuture.release();
             }
         } else {
@@ -474,23 +481,39 @@ public abstract class NettyRemotingAbstract {
         }
     }
 
+    /**
+     * 异步请求
+     * @param channel
+     * @param request
+     * @param timeoutMillis
+     * @param invokeCallback
+     * @throws InterruptedException
+     * @throws RemotingTooMuchRequestException
+     * @throws RemotingTimeoutException
+     * @throws RemotingSendRequestException
+     */
     public void invokeAsyncImpl(final Channel channel, final RemotingCommand request, final long timeoutMillis,
         final InvokeCallback invokeCallback)
         throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
         long beginStartTime = System.currentTimeMillis();
         final int opaque = request.getOpaque();
+
+        // 通过信号量（同时执行某一操作的线程数上限）限制能够同时执行异步请求的线程数目（为了缓解服务端的压力，因此需要限制客户端的并发量，限制的时间是timeoutMillis）
         boolean acquired = this.semaphoreAsync.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
         if (acquired) {
             final SemaphoreReleaseOnlyOnce once = new SemaphoreReleaseOnlyOnce(this.semaphoreAsync);
             long costTime = System.currentTimeMillis() - beginStartTime;
             if (timeoutMillis < costTime) {
+                // 耗时时间已经超过了，因此抛异常
                 once.release();
                 throw new RemotingTimeoutException("invokeAsyncImpl call timeout");
             }
 
             final ResponseFuture responseFuture = new ResponseFuture(channel, opaque, timeoutMillis - costTime, invokeCallback, once);
+            // responseFuture添加进responseTable中，待producer接收到响应之后进行处理
             this.responseTable.put(opaque, responseFuture);
             try {
+                // 客户端写出
                 channel.writeAndFlush(request).addListener(new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture f) throws Exception {
@@ -503,6 +526,7 @@ public abstract class NettyRemotingAbstract {
                     }
                 });
             } catch (Exception e) {
+                // 释放semaphore
                 responseFuture.release();
                 log.warn("send a request command to channel <" + RemotingHelper.parseChannelRemoteAddr(channel) + "> Exception", e);
                 throw new RemotingSendRequestException(RemotingHelper.parseChannelRemoteAddr(channel), e);

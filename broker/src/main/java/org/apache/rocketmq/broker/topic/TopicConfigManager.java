@@ -227,6 +227,14 @@ public class TopicConfigManager extends ConfigManager {
         return topicConfig;
     }
 
+    /**
+     * topic配置信息-有则直接获取，无则新建并向nameServer注册
+     * @param topic
+     * @param clientDefaultTopicQueueNums
+     * @param perm
+     * @param topicSysFlag
+     * @return
+     */
     public TopicConfig createTopicInSendMessageBackMethod(
         final String topic,
         final int clientDefaultTopicQueueNums,
@@ -245,6 +253,7 @@ public class TopicConfigManager extends ConfigManager {
                     if (topicConfig != null)
                         return topicConfig;
 
+                    // 新建topic配置信息
                     topicConfig = new TopicConfig(topic);
                     topicConfig.setReadQueueNums(clientDefaultTopicQueueNums);
                     topicConfig.setWriteQueueNums(clientDefaultTopicQueueNums);
@@ -265,6 +274,7 @@ public class TopicConfigManager extends ConfigManager {
         }
 
         if (createNew) {
+            // broker向nameServer注册，其实就是存储了topic路由信息（包括topic配置信息）
             this.brokerController.registerBrokerAll(false, true, true);
         }
 

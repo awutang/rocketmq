@@ -19,6 +19,7 @@ package org.apache.rocketmq.common.protocol;
 
 public class RequestCode {
 
+    // 发送消息 eg.producer发送消息到broker某一队列
     public static final int SEND_MESSAGE = 10;
 
     public static final int PULL_MESSAGE = 11;
@@ -86,6 +87,7 @@ public class RequestCode {
 
     public static final int DELETE_KV_CONFIG = 102;
 
+    // broker向nameServer发起注册
     public static final int REGISTER_BROKER = 103;
 
     public static final int UNREGISTER_BROKER = 104;

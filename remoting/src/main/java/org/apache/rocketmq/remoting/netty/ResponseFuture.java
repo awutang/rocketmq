@@ -48,6 +48,9 @@ public class ResponseFuture {
         this.once = once;
     }
 
+    /**
+     * 异步请求，获取响应之后执行callBack
+     */
     public void executeInvokeCallback() {
         if (invokeCallback != null) {
             if (this.executeCallbackOnlyOnce.compareAndSet(false, true)) {
@@ -56,6 +59,9 @@ public class ResponseFuture {
         }
     }
 
+    /**
+     * 释放semaphore
+     */
     public void release() {
         if (this.once != null) {
             this.once.release();

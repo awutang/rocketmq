@@ -23,10 +23,17 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.route.QueueData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
 
+/**
+ * topic路由信息
+ */
 public class TopicPublishInfo {
+    // 是否顺序消息
     private boolean orderTopic = false;
+
     private boolean haveTopicRouterInfo = false;
+    // topic的消息队列，是选定broker之后的吗？--是的，MessageQueue就是topic与broker的映射关系
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
+    // 每选择一次消息队列，该值加1
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();
     private TopicRouteData topicRouteData;
 
@@ -66,16 +73,24 @@ public class TopicPublishInfo {
         this.haveTopicRouterInfo = haveTopicRouterInfo;
     }
 
+    /**
+     * 选择队列
+     * @param lastBrokerName
+     * @return
+     */
     public MessageQueue selectOneMessageQueue(final String lastBrokerName) {
         if (lastBrokerName == null) {
+            // 1. 首次查询执行到这
             return selectOneMessageQueue();
         } else {
+            // 2. 重试发送且再次选择队列时执行到这
             for (int i = 0; i < this.messageQueueList.size(); i++) {
                 int index = this.sendWhichQueue.getAndIncrement();
                 int pos = Math.abs(index) % this.messageQueueList.size();
                 if (pos < 0)
                     pos = 0;
                 MessageQueue mq = this.messageQueueList.get(pos);
+                // 不能选择上次发送消息时所用的broker，因为还是有可能发送失败
                 if (!mq.getBrokerName().equals(lastBrokerName)) {
                     return mq;
                 }
@@ -84,6 +99,10 @@ public class TopicPublishInfo {
         }
     }
 
+    /**
+     * 选择队列
+     * @return
+     */
     public MessageQueue selectOneMessageQueue() {
         int index = this.sendWhichQueue.getAndIncrement();
         int pos = Math.abs(index) % this.messageQueueList.size();
