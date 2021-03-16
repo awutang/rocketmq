@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Spin lock Implementation to put message, suggest using this with low race conditions
+ *
+ * CAS乐观锁
  */
 public class PutMessageSpinLock implements PutMessageLock {
     //true: Can lock, false : in lock.
@@ -29,6 +31,7 @@ public class PutMessageSpinLock implements PutMessageLock {
     public void lock() {
         boolean flag;
         do {
+            // false表示加锁成功
             flag = this.putMessageSpinLock.compareAndSet(true, false);
         }
         while (!flag);
