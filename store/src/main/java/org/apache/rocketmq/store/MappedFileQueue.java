@@ -31,6 +31,7 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 
 /**
  * 可以看做是commitlog目录，其下的文件写满一个后再创建另一个
+ * MappedFile的管理容器
  */
 public class MappedFileQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
@@ -40,15 +41,22 @@ public class MappedFileQueue {
 
     private final String storePath;
 
+    // 单个文件的大小
     private final int mappedFileSize;
 
+    // MappedFile文件集合，MappedFile文件名是第一条消息的全局物理偏移量
     private final CopyOnWriteArrayList<MappedFile> mappedFiles = new CopyOnWriteArrayList<MappedFile>();
 
+    // 创建MappedFile服务类
     private final AllocateMappedFileService allocateMappedFileService;
 
+    // 当前刷盘指针，表示这之前的数据已全部刷到磁盘文件
     private long flushedWhere = 0;
+
+    // 当前数据提交指针，内存中ByteBuffer当前写指针，>=flushedWhere
     private long committedWhere = 0;
 
+    // 消息存储时间戳
     private volatile long storeTimestamp = 0;
 
     public MappedFileQueue(final String storePath, int mappedFileSize,
@@ -77,12 +85,18 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 根据消息存储时间戳查询MappedFile
+     * @param timestamp
+     * @return
+     */
     public MappedFile getMappedFileByTime(final long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
 
         if (null == mfs)
             return null;
 
+        // 在list中查找第一个文件修改时间戳大于消息存储时间戳的，因为list中的文件是顺序生成的
         for (int i = 0; i < mfs.length; i++) {
             MappedFile mappedFile = (MappedFile) mfs[i];
             if (mappedFile.getLastModifiedTimestamp() >= timestamp) {
@@ -248,7 +262,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 获取commitlog目录下可写的文件
+     * 获取commitlog目录下可写的文件--当前最后一个
      * @return
      */
     public MappedFile getLastMappedFile() {
@@ -469,7 +483,7 @@ public class MappedFileQueue {
     /**
      * Finds a mapped file by offset.
      *
-     * @param offset Offset.
+     * @param offset Offset. 消息的offset
      * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
      * @return Mapped file or null (when not found and returnFirstOnNotFound is <code>false</code>).
      */
@@ -486,6 +500,10 @@ public class MappedFileQueue {
                         this.mappedFileSize,
                         this.mappedFiles.size());
                 } else {
+                    // 要考虑文件被删除的情况
+                    // firstMappedFile.getFileFromOffset() / this.mappedFileSize：当前第一个文件在还未删除前面文件时是第几个
+                    // offset / this.mappedFileSize:在未删除文件时此消息应该是第几个文件
+                    // 相减得到的是此消息实际所在的第几个文件
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {

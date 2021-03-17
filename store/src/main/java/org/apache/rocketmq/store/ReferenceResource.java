@@ -20,7 +20,11 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public abstract class ReferenceResource {
     protected final AtomicLong refCount = new AtomicLong(1);
+
+    // 表示MappedFile当前可用
     protected volatile boolean available = true;
+
+    // mappedByteBuffer已被释放
     protected volatile boolean cleanupOver = false;
     private volatile long firstShutdownTimestamp = 0;
 
@@ -40,19 +44,29 @@ public abstract class ReferenceResource {
         return this.available;
     }
 
+    /**
+     * 释放mappedByteBuffer
+     * @param intervalForcibly:拒绝被销毁的最大存活时间
+     */
     public void shutdown(final long intervalForcibly) {
         if (this.available) {
+            // 首次
             this.available = false;
             this.firstShutdownTimestamp = System.currentTimeMillis();
             this.release();
         } else if (this.getRefCount() > 0) {
+            // 第二次，若首次执行时release()由于refCount>1导致并未释放mappedByteBuffer，则需要再次shutdown
             if ((System.currentTimeMillis() - this.firstShutdownTimestamp) >= intervalForcibly) {
+                // 当距离上次shutdown耗时已超过最大存活时间，则将refCount减少（为了release能真正释放mappedByteBuffer）
                 this.refCount.set(-1000 - this.getRefCount());
                 this.release();
             }
         }
     }
 
+    /**
+     * 释放mappedByteBuffer
+     */
     public void release() {
         long value = this.refCount.decrementAndGet();
         if (value > 0)
