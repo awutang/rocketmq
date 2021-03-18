@@ -71,7 +71,7 @@ public class DefaultMessageStore implements MessageStore {
     // CommitLog 消息存储文件实现类
     private final CommitLog commitLog;
 
-    // 消息消费队列 每个消息topic包括多个消息队列，一个消息队列有一个consumeQueue文件
+    // 消息消费队列 每个消息topic包括多个消息队列，一个消息队列有一个consumeQueue(其下有多个物理文件)
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
 
     // 消息队列文件consumeQueue刷盘线程

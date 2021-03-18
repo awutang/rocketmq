@@ -25,6 +25,16 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.config.StorePathConfigHelper;
 
+/**
+ * 消息消费队列
+ * 1.why:为了提高消息的检索效率，因为同一主题的消息在commitlog是不连续的，如果想要查找同一主题下的所有消息将会很慢，因此设计了consumeQueue，
+ * consumeQueue是由topic+queueId唯一确定的，因此当根据topic+queueId查询消息时可以很快得到所有数据
+ * 2.what:consumeQueue中的每一个元素不是消息的全量数据（commitlog offset+size+tag hashCode 20个字节）,每个元素的下标是在queue中逻辑偏移量
+ *      每个consumeQueue默认包含30万个元素，那总长度为30w*20B
+ * 3.when:当消息到达commitLog文件后，由特定线程做消息转发任务，将相关数据存到consumeQueue+indexFile
+ *
+ * topic+queueId目录下会有多个物理文件
+ */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
@@ -41,6 +51,8 @@ public class ConsumeQueue {
     private final String storePath;
     private final int mappedFileSize;
     private long maxPhysicOffset = -1;
+
+    // topic+queueId目录下所有消息的最小逻辑偏移量（全局）？
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
 
@@ -152,18 +164,29 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据消息存储时间戳获取消息的index
+     * @param timestamp
+     * @return
+     */
     public long getOffsetInQueueByTime(final long timestamp) {
+        // 1. 定位到具体mappedFile文件
         MappedFile mappedFile = this.mappedFileQueue.getMappedFileByTime(timestamp);
         if (mappedFile != null) {
+            // 2. 二分查找-前提是具体mappedFile文件中存储的数据的commitLogOffset是顺序的
             long offset = 0;
+            // 文件内消息最小偏移量
             int low = minLogicOffset > mappedFile.getFileFromOffset() ? (int) (minLogicOffset - mappedFile.getFileFromOffset()) : 0;
             int high = 0;
             int midOffset = -1, targetOffset = -1, leftOffset = -1, rightOffset = -1;
             long leftIndexValue = -1L, rightIndexValue = -1L;
+
+            // commitlog目录下有效文件的最小偏移量
             long minPhysicOffset = this.defaultMessageStore.getMinPhyOffset();
             SelectMappedBufferResult sbr = mappedFile.selectMappedBuffer(0);
             if (null != sbr) {
                 ByteBuffer byteBuffer = sbr.getByteBuffer();
+                // 具体consumeQueue文件中最后一个元素的index(每加1代表一个字节)
                 high = byteBuffer.limit() - CQ_STORE_UNIT_SIZE;
                 try {
                     while (high >= low) {
@@ -172,23 +195,29 @@ public class ConsumeQueue {
                         long phyOffset = byteBuffer.getLong();
                         int size = byteBuffer.getInt();
                         if (phyOffset < minPhysicOffset) {
+                            // 说明此midOffset处的数据其实是失效的，因此low变大
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             continue;
                         }
 
+                        // 获取commitLog中的消息的存储时间戳
                         long storeTime =
                             this.defaultMessageStore.getCommitLog().pickupStoreTimestamp(phyOffset, size);
                         if (storeTime < 0) {
+                            // 无效消息，说明consumeQueue中的数据有问题
                             return 0;
                         } else if (storeTime == timestamp) {
+                            // 找到了
                             targetOffset = midOffset;
                             break;
                         } else if (storeTime > timestamp) {
+                            // 目标元素在左边
                             high = midOffset - CQ_STORE_UNIT_SIZE;
                             rightOffset = midOffset;
                             rightIndexValue = storeTime;
                         } else {
+                            // 目标元素在右边
                             low = midOffset + CQ_STORE_UNIT_SIZE;
                             leftOffset = midOffset;
                             leftIndexValue = storeTime;
@@ -196,22 +225,25 @@ public class ConsumeQueue {
                     }
 
                     if (targetOffset != -1) {
-
+                        // 找到了
                         offset = targetOffset;
                     } else {
+                        // 未找到
                         if (leftIndexValue == -1) {
-
+                            // 返回比目标时间戳稍大但最接近的
                             offset = rightOffset;
                         } else if (rightIndexValue == -1) {
-
+                            // 返回比目标时间戳稍小但最接近的
                             offset = leftOffset;
                         } else {
+                            // 返回与目标时间戳稍最接近的
                             offset =
                                 Math.abs(timestamp - leftIndexValue) > Math.abs(timestamp
                                     - rightIndexValue) ? rightOffset : leftOffset;
                         }
                     }
 
+                    // 返回目标的全局offset 除以CQ_STORE_UNIT_SIZE得到是第几条消息
                     return (mappedFile.getFileFromOffset() + offset) / CQ_STORE_UNIT_SIZE;
                 } finally {
                     sbr.release();
@@ -488,12 +520,20 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 根据index获取队列中的元素
+     * @param startIndex：是consumequeue目录下的全局逻辑offset吗？
+     * @return
+     */
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
         int mappedFileSize = this.mappedFileSize;
+        // 全局offset
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
         if (offset >= this.getMinLogicOffset()) {
+            // 找到具体的一个consumeQueue文件
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
             if (mappedFile != null) {
+                // offset % mappedFileSize:文件中的offset
                 SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
                 return result;
             }

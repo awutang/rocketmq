@@ -474,13 +474,21 @@ public class MappedFile extends ReferenceResource {
         return this.fileSize == this.wrotePosition.get();
     }
 
+    /**
+     *
+     * @param pos:消息在文件内的偏移量
+     * @param size
+     * @return
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos, int size) {
+        // MappedFile中最大可读位置
         int readPosition = getReadPosition();
         if ((pos + size) <= readPosition) {
             if (this.hold()) {
                 ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
                 byteBuffer.position(pos);
                 ByteBuffer byteBufferNew = byteBuffer.slice();
+                // pos-lim之间的数据就是长度为size的消息 myConfusion:但如果mappedByteBuffer没数据呢（transientStorePoolEnable==true时数据是从writeBuffer到channel的）
                 byteBufferNew.limit(size);
                 return new SelectMappedBufferResult(this.fileFromOffset + pos, byteBufferNew, size, this);
             } else {
@@ -496,8 +504,8 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 查找到pos到最大可读之间的数据
-     * @param pos
+     * 查找pos到最大可读之间的数据
+     * @param pos：文件中的offset
      * @return
      */
     public SelectMappedBufferResult selectMappedBuffer(int pos) {

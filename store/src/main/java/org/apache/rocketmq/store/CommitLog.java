@@ -47,6 +47,8 @@ import org.apache.rocketmq.store.schedule.ScheduleMessageService;
 
 /**
  * Store all metadata downtime for recovery, data protection reliability
+ *
+ * 存储消息
  */
 public class CommitLog {
     // Message's MAGIC CODE daa320a7
@@ -1186,12 +1188,17 @@ public class CommitLog {
         return -1;
     }
 
+    /**
+     * 获取当前commitlog目录最小偏移量
+     * @return
+     */
     public long getMinOffset() {
         MappedFile mappedFile = this.mappedFileQueue.getFirstMappedFile();
         if (mappedFile != null) {
             if (mappedFile.isAvailable()) {
                 return mappedFile.getFileFromOffset();
             } else {
+                // 若第一个文件不可用则获取下一个文件的offset
                 return this.rollNextFile(mappedFile.getFileFromOffset());
             }
         }
@@ -1199,8 +1206,15 @@ public class CommitLog {
         return -1;
     }
 
+    /**
+     *
+     * @param offset:消息全局物理offset
+     * @param size:消息长度
+     * @return
+     */
     public SelectMappedBufferResult getMessage(final long offset, final int size) {
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
+        // 根据消息offset获取所在MappedFile
         MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, offset == 0);
         if (mappedFile != null) {
             int pos = (int) (offset % mappedFileSize);
@@ -1209,8 +1223,15 @@ public class CommitLog {
         return null;
     }
 
+    /**
+     * 获取下一个文件的offset
+     * @param offset
+     * @return
+     */
     public long rollNextFile(final long offset) {
+        // 一个文件的容量
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
+        // fileFromOffset应该一直是mappedFileSize的整数倍吧，这里%是为了干啥？--为了兼容offset不是fileFromOffset的场景，offset可能是文件中的某一条消息的偏移量
         return offset + mappedFileSize - offset % mappedFileSize;
     }
 
