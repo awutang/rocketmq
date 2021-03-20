@@ -27,13 +27,20 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 记录commitLog consumeQueue indexFile的刷盘时间点，checkPoint文件固定长度24KB,但是只用前24B
+ */
 public class StoreCheckpoint {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private final RandomAccessFile randomAccessFile;
     private final FileChannel fileChannel;
     private final MappedByteBuffer mappedByteBuffer;
+
+    // commitLog文件刷盘时间戳
     private volatile long physicMsgTimestamp = 0;
+    // consumeQueue文件刷盘时间戳
     private volatile long logicsMsgTimestamp = 0;
+    // indexFile文件刷盘时间戳
     private volatile long indexMsgTimestamp = 0;
 
     public StoreCheckpoint(final String scpPath) throws IOException {

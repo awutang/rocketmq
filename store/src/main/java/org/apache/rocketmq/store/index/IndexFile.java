@@ -28,16 +28,26 @@ import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.MappedFile;
 
 /**
- * 索引文件
+ * 索引文件，此文件只有一个，可以看属性因为只有一个MappedFile对象，与consumeQueue不同
+ *
+ * indexHead+500w个hashSlot+2000w个indexItem
  */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
-    private static int hashSlotSize = 4;
+    private static int hashSlotSize = 4;// 每个hashSlot占4B
     private static int indexSize = 20;
     private static int invalidIndex = 0;
 
-    // 一个IndexFile默认包括500w和hashslot
+    // 一个IndexFile默认包括500w个hashSlot，每个槽存储的是定位在该槽的hashCode在index条目中的最新（因为可能有冲突）索引
     private final int hashSlotNum;
+    /**
+     * 默认一个IndexFile包括2000w个index条目，每个条目包括：
+     *  1.hashCode:key的hashCode--myConfusionsv:key是如何生成的？--其实是业务代码自己定的，能够唯一标记消息就好了
+     *  2.phyOffset:消息对应的commitLog物理偏移量
+     *  3.timeDiff：该消息存储时间戳与文件中第一条消息的存储时间戳差值，小于0时此消息无效
+     *  4.preIndexNo:该条目的前一条记录的index索引，记录是在当出现hash冲突时构建的链表结构中--多个preIndexNo可以看成是一个冲突链表
+     */
+    // indexItem最大个数
     private final int indexNum;
     private final MappedFile mappedFile;
     private final FileChannel fileChannel;
@@ -96,10 +106,21 @@ public class IndexFile {
         return this.mappedFile.destroy(intervalForcibly);
     }
 
+    /**
+     * 消息key:commitLogOffset存到indexFile
+     * @param key:消息索引
+     * @param phyOffset：消息物理偏移量
+     * @param storeTimestamp：消息存储时间戳
+     * @return
+     */
     public boolean putKey(final String key, final long phyOffset, final long storeTimestamp) {
+        // 1.
         if (this.indexHeader.getIndexCount() < this.indexNum) {
+            // key的hashCode
             int keyHash = indexKeyHashMethod(key);
+            // 定位到slot--需要考虑冲突
             int slotPos = keyHash % this.hashSlotNum;
+            // slot物理地址--其实是在mappedByteBuffer中的index
             int absSlotPos = IndexHeader.INDEX_HEADER_SIZE + slotPos * hashSlotSize;
 
             FileLock fileLock = null;
@@ -108,11 +129,14 @@ public class IndexFile {
 
                 // fileLock = this.fileChannel.lock(absSlotPos, hashSlotSize,
                 // false);
+                // 获取刚定位到的slot处的value并校验
                 int slotValue = this.mappedByteBuffer.getInt(absSlotPos);
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()) {
+                    // 若slot并未存储任何数据，则设置value=0；否则这个value其实发生了冲突的hashCode在indexItems中的index
                     slotValue = invalidIndex;
                 }
 
+                // 计算当前消息的存储时间戳与第一条消息的时间差
                 long timeDiff = storeTimestamp - this.indexHeader.getBeginTimestamp();
 
                 timeDiff = timeDiff / 1000;
@@ -125,17 +149,22 @@ public class IndexFile {
                     timeDiff = 0;
                 }
 
+                // indexItems中的index
                 int absIndexPos =
                     IndexHeader.INDEX_HEADER_SIZE + this.hashSlotNum * hashSlotSize
                         + this.indexHeader.getIndexCount() * indexSize;
 
+                // 存储到indexItems
                 this.mappedByteBuffer.putInt(absIndexPos, keyHash);
                 this.mappedByteBuffer.putLong(absIndexPos + 4, phyOffset);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
+                // 定位到同一个slot的item.index
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
 
+                // 存储到hashSlot,存储的是第几个item而不是第几个字节
                 this.mappedByteBuffer.putInt(absSlotPos, this.indexHeader.getIndexCount());
 
+                // 更新indexHeader
                 if (this.indexHeader.getIndexCount() <= 1) {
                     this.indexHeader.setBeginPhyOffset(phyOffset);
                     this.indexHeader.setBeginTimestamp(storeTimestamp);
@@ -161,6 +190,7 @@ public class IndexFile {
                 }
             }
         } else {
+            // 1.2 当前indexFile已满
             log.warn("Over index file capacity: index count = " + this.indexHeader.getIndexCount()
                 + "; index max num = " + this.indexNum);
         }
@@ -168,6 +198,11 @@ public class IndexFile {
         return false;
     }
 
+    /**
+     * key的hashCode
+     * @param key
+     * @return
+     */
     public int indexKeyHashMethod(final String key) {
         int keyHash = key.hashCode();
         int keyHashPositive = Math.abs(keyHash);
@@ -195,6 +230,15 @@ public class IndexFile {
         return result;
     }
 
+    /**
+     * 根据key查找消息
+     * @param phyOffsets：其实是空list,存储在查找过程中找到的commitLogOffset，其实是查找的结果
+     * @param key
+     * @param maxNum:本次查找的最大消息条数
+     * @param begin：开始时间戳
+     * @param end：结束时间戳
+     * @param lock
+     */
     public void selectPhyOffset(final List<Long> phyOffsets, final String key, final int maxNum,
         final long begin, final long end, boolean lock) {
         if (this.mappedFile.hold()) {
@@ -217,7 +261,9 @@ public class IndexFile {
 
                 if (slotValue <= invalidIndex || slotValue > this.indexHeader.getIndexCount()
                     || this.indexHeader.getIndexCount() <= 1) {
+                    // hashCode没有对应的item,意思是key对应的消息之前并没有存储到indexFile
                 } else {
+                    // hash冲突链式解决方案--用链表解决冲突，所以需要循环查找链表
                     for (int nextIndexToRead = slotValue; ; ) {
                         if (phyOffsets.size() >= maxNum) {
                             break;
@@ -234,6 +280,7 @@ public class IndexFile {
                         int prevIndexRead = this.mappedByteBuffer.getInt(absIndexPos + 4 + 8 + 4);
 
                         if (timeDiff < 0) {
+                            // 无效
                             break;
                         }
 
@@ -243,12 +290,15 @@ public class IndexFile {
                         boolean timeMatched = (timeRead >= begin) && (timeRead <= end);
 
                         if (keyHash == keyHashRead && timeMatched) {
+                            // 相同hashCode,则放入结果list,因为可能存在hash冲突所以结果是list的
                             phyOffsets.add(phyOffsetRead);
                         }
 
+                        // 循着链表查找冲突的item
                         if (prevIndexRead <= invalidIndex
                             || prevIndexRead > this.indexHeader.getIndexCount()
                             || prevIndexRead == nextIndexToRead || timeRead < begin) {
+                            // prevIndexRead == nextIndexToRead:说明链表中只有一个元素即未发生冲突
                             break;
                         }
 
@@ -266,6 +316,7 @@ public class IndexFile {
                     }
                 }
 
+                // 为啥要释放？
                 this.mappedFile.release();
             }
         }
