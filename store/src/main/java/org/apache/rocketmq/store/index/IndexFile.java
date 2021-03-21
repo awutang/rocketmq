@@ -158,7 +158,7 @@ public class IndexFile {
                 this.mappedByteBuffer.putInt(absIndexPos, keyHash);
                 this.mappedByteBuffer.putLong(absIndexPos + 4, phyOffset);
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8, (int) timeDiff);
-                // 定位到同一个slot的item.index
+                // 定位到同一个slot的item.index--preIndexNo
                 this.mappedByteBuffer.putInt(absIndexPos + 4 + 8 + 4, slotValue);
 
                 // 存储到hashSlot,存储的是第几个item而不是第几个字节

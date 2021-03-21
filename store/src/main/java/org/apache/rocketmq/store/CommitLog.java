@@ -68,7 +68,7 @@ public class CommitLog {
     private final AppendMessageCallback appendMessageCallback;
     private final ThreadLocal<MessageExtBatchEncoder> batchEncoderThreadLocal;
 
-    // 每个queue对应的offset?
+    // 每个topic+queueId对应的下次待写入位置
     protected HashMap<String/* topic-queueid */, Long/* offset */> topicQueueTable = new HashMap<String, Long>(1024);
     protected volatile long confirmOffset = -1L;
 
@@ -156,11 +156,18 @@ public class CommitLog {
         return this.getData(offset, offset == 0);
     }
 
+    /**
+     * 查找offset之后的全部有效数据（commitLog目录之下的）
+     * @param offset
+     * @param returnFirstOnNotFound
+     * @return
+     */
     public SelectMappedBufferResult getData(final long offset, final boolean returnFirstOnNotFound) {
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
         MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, returnFirstOnNotFound);
         if (mappedFile != null) {
             int pos = (int) (offset % mappedFileSize);
+            // 这里返回的是一个文件中的数据，那如果offset之后还有文件呢？--this.reputFromOffset += size;之后会对reputFromOffset累加
             SelectMappedBufferResult result = mappedFile.selectMappedBuffer(pos);
             return result;
         }
@@ -306,6 +313,7 @@ public class CommitLog {
             int bodyLen = byteBuffer.getInt();
             if (bodyLen > 0) {
                 if (readBody) {
+                    // body,从byteBuffer读取到bytesContent
                     byteBuffer.get(bytesContent, 0, bodyLen);
 
                     if (checkCRC) {
@@ -562,7 +570,7 @@ public class CommitLog {
     }
 
     /**
-     * 存储消息
+     * 存储消息到commitLog
      * @param msg
      * @return
      */
@@ -1581,7 +1589,7 @@ public class CommitLog {
         }
 
         /**
-         * 追加写入commitlog文件,还有queue与index文件呢？
+         * 追加写入commitlog文件,还有queue与index文件呢？--ReputMessageService线程处理（broker启动时开启）
          * @param fileFromOffset 当前commitlog文件offset
          * @param byteBuffer
          * @param maxBlank:commitlog可写的最大空间
@@ -1734,9 +1742,9 @@ public class CommitLog {
             // Write messages to the queue buffer
             byteBuffer.put(this.msgStoreItemMemory.array(), 0, msgLen);
 
-            // myConfusion:1.msgId是会存到indexFile中吗？从而可以先搜索indexFile得到消息在commitLog中的物理偏移量,
-            //  然后根据此偏移量定位到commitLog中的消息（其实就是索引的作用）
-            //  2.queueOffset是在将消息分发到consumeQueueFile时用到的？
+            // myConfusionsv:1.msgId是会存到indexFile中吗？从而可以先搜索indexFile得到消息在commitLog中的物理偏移量,
+            //  然后根据此偏移量定位到commitLog中的消息（其实就是索引的作用）--msgId并未存到indexFile
+            //  2.queueOffset是在将消息分发到consumeQueueFile时用到的？--是的
             AppendMessageResult result = new AppendMessageResult(AppendMessageStatus.PUT_OK, wroteOffset, msgLen, msgId,
                 msgInner.getStoreTimestamp(), queueOffset, CommitLog.this.defaultMessageStore.now() - beginTimeMills);
 
@@ -1747,7 +1755,7 @@ public class CommitLog {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
 
-                    //更新queue的逻辑偏移量，比如某一个消息根据topic+queueId从而得到对应第几个queue文件
+                    //更新queue的逻辑偏移量，比如某一个消息根据topic+queueId从而得到应该存储到consumeQueue目录下(topic+queueId对应一个目录)的哪个offset
                     // The next update ConsumeQueue information
                     CommitLog.this.topicQueueTable.put(key, ++queueOffset);
                     break;

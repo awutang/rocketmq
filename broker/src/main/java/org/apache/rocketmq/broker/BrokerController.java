@@ -855,6 +855,7 @@ public class BrokerController {
      */
     public void start() throws Exception {
         if (this.messageStore != null) {
+            // 启动转发commitLog更新事件的线程
             this.messageStore.start();
         }
 

@@ -172,6 +172,7 @@ public class DefaultMessageStore implements MessageStore {
 
         this.indexService.start();
 
+        // 转发请求处理类 consumeQueue+indexFile
         this.dispatcherList = new LinkedList<>();
         this.dispatcherList.addLast(new CommitLogDispatcherBuildConsumeQueue());
         this.dispatcherList.addLast(new CommitLogDispatcherBuildIndex());
@@ -234,6 +235,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
+     * 转发commitLog更新事件
      * @throws Exception
      */
     public void start() throws Exception {
@@ -1543,13 +1545,22 @@ public class DefaultMessageStore implements MessageStore {
         return runningFlags;
     }
 
+    /**
+     * 转发
+     * @param req
+     */
     public void doDispatch(DispatchRequest req) {
         for (CommitLogDispatcher dispatcher : this.dispatcherList) {
             dispatcher.dispatch(req);
         }
     }
 
+    /**
+     * 根据消息更新consumeQueue
+     * @param dispatchRequest
+     */
     public void putMessagePositionInfo(DispatchRequest dispatchRequest) {
+        // 找到topic+queueId查找文件夹
         ConsumeQueue cq = this.findConsumeQueue(dispatchRequest.getTopic(), dispatchRequest.getQueueId());
         cq.putMessagePositionInfoWrapper(dispatchRequest);
     }
@@ -1603,6 +1614,9 @@ public class DefaultMessageStore implements MessageStore {
         }, 6, TimeUnit.SECONDS);
     }
 
+    /**
+     * 根据消息更新consumeQueue
+     */
     class CommitLogDispatcherBuildConsumeQueue implements CommitLogDispatcher {
 
         @Override
@@ -1620,6 +1634,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 根据消息更新indexFile
+     */
     class CommitLogDispatcherBuildIndex implements CommitLogDispatcher {
 
         @Override
@@ -1922,8 +1939,14 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 转发commitLog更新事件--其实就是消息存储在commitLog后需要将相关数据存储到consumeQueue(commitLogOffset size tagHashCode)+indexFile(keyHashCode:commitLogOffset)
+     */
     class ReputMessageService extends ServiceThread {
 
+        // 从哪个物理偏移量（commitLog）开始转发消息
+        // 1.若可以重复转发，则reputFromOffset设置为commitLog的committedWhere--myConfusion:why?之前提交的数据不也是不能重复转发吗？
+        // 2.若不可以重复转发，则reputFromOffset设置为commitLog内存中最大偏移量
         private volatile long reputFromOffset = 0;
 
         public long getReputFromOffset() {
@@ -1959,6 +1982,9 @@ public class DefaultMessageStore implements MessageStore {
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
 
+        /**
+         * 转发
+         */
         private void doReput() {
             if (this.reputFromOffset < DefaultMessageStore.this.commitLog.getMinOffset()) {
                 log.warn("The reputFromOffset={} is smaller than minPyOffset={}, this usually indicate that the dispatch behind too much and the commitlog has expired.",
@@ -1972,18 +1998,22 @@ public class DefaultMessageStore implements MessageStore {
                     break;
                 }
 
+                // commitLog文件中reputFromOffset之后的数据--正是在appendMessagesInner()中存入的按照格式组装的数据
                 SelectMappedBufferResult result = DefaultMessageStore.this.commitLog.getData(reputFromOffset);
                 if (result != null) {
                     try {
                         this.reputFromOffset = result.getStartOffset();
 
+                        // 循环处理数据
                         for (int readSize = 0; readSize < result.getSize() && doNext; ) {
+                            // 一条消息构建dispatchRequest
                             DispatchRequest dispatchRequest =
                                 DefaultMessageStore.this.commitLog.checkMessageAndReturnSize(result.getByteBuffer(), false, false);
                             int size = dispatchRequest.getBufferSize() == -1 ? dispatchRequest.getMsgSize() : dispatchRequest.getBufferSize();
 
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    // 转发处理
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
 
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
@@ -1994,6 +2024,7 @@ public class DefaultMessageStore implements MessageStore {
                                             dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
                                     }
 
+                                    // 一条消息在commitLog文件中的总长度
                                     this.reputFromOffset += size;
                                     readSize += size;
                                     if (DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {
@@ -2034,12 +2065,16 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        /**
+         * 执行
+         */
         @Override
         public void run() {
             DefaultMessageStore.log.info(this.getServiceName() + " service started");
 
             while (!this.isStopped()) {
                 try {
+                    // 每休息1s就转发一次
                     Thread.sleep(1);
                     this.doReput();
                 } catch (Exception e) {

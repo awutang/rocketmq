@@ -18,6 +18,9 @@ package org.apache.rocketmq.store;
 
 import java.util.Map;
 
+/**
+ * 转发请求类
+ */
 public class DispatchRequest {
     private final String topic;
     private final int queueId;
@@ -33,6 +36,8 @@ public class DispatchRequest {
     private final int sysFlag;
     private final long preparedTransactionOffset;
     private final Map<String, String> propertiesMap;
+
+    // 位图，何用？
     private byte[] bitMap;
 
     private int bufferSize = -1;//the buffer size maybe larger than the msg size if the message is wrapped by something
@@ -53,17 +58,27 @@ public class DispatchRequest {
     ) {
         this.topic = topic;
         this.queueId = queueId;
+        // 是commitLog文件中的还是整个目录下的offset?--应该是目录下的
         this.commitLogOffset = commitLogOffset;
+        // 在commitLog文件中一条消息占据的总长度
         this.msgSize = msgSize;
+        // 消息过滤tag hashCOde
         this.tagsCode = tagsCode;
         this.storeTimestamp = storeTimestamp;
+        // 消息在消息队列偏移量--在存储消息到commitLog时构造的
         this.consumeQueueOffset = consumeQueueOffset;
+        // Message.properties.keys
         this.keys = keys;
+        // Message.properties.uniqKey
         this.uniqKey = uniqKey;
 
+        // MessageExtBrokerInner.sysFlag
         this.sysFlag = sysFlag;
+        // MessageExtBrokerInner.preparedTransactionOffset 消息预处理事无偏移量
         this.preparedTransactionOffset = preparedTransactionOffset;
+        // 初始值为true
         this.success = true;
+        // Message.properties
         this.propertiesMap = propertiesMap;
     }
 

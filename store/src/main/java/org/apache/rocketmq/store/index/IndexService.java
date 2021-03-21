@@ -43,6 +43,7 @@ public class IndexService {
     private final int hashSlotNum;
     private final int indexNum;
     private final String storePath;
+    // index目录
     private final ArrayList<IndexFile> indexFileList = new ArrayList<IndexFile>();
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
@@ -198,7 +199,12 @@ public class IndexService {
         return topic + "#" + key;
     }
 
+    /**
+     * 根据消息更新indexFile
+     * @param req
+     */
     public void buildIndex(DispatchRequest req) {
+        // 1. 获取最新indexFile
         IndexFile indexFile = retryGetAndCreateIndexFile();
         if (indexFile != null) {
             long endPhyOffset = indexFile.getEndPhyOffset();
@@ -206,6 +212,7 @@ public class IndexService {
             String topic = msg.getTopic();
             String keys = msg.getKeys();
             if (msg.getCommitLogOffset() < endPhyOffset) {
+                // 说明此msg之前处理过了，忽略本次索引构建
                 return;
             }
 
@@ -220,6 +227,7 @@ public class IndexService {
             }
 
             if (req.getUniqKey() != null) {
+                // store to indexFile 消息的唯一键不为空，则组装到key,唯一键可以加速索引
                 indexFile = putKey(indexFile, msg, buildKey(topic, req.getUniqKey()));
                 if (indexFile == null) {
                     log.error("putKey error commitlog {} uniqkey {}", req.getCommitLogOffset(), req.getUniqKey());
@@ -228,6 +236,7 @@ public class IndexService {
             }
 
             if (keys != null && keys.length() > 0) {
+                // 多个key分别构建index(加到indexFile中)--同一消息建立多个索引
                 String[] keyset = keys.split(MessageConst.KEY_SEPARATOR);
                 for (int i = 0; i < keyset.length; i++) {
                     String key = keyset[i];
@@ -245,6 +254,13 @@ public class IndexService {
         }
     }
 
+    /**
+     * 存到indexFile，循环重试（只要还有可写的indexFile）
+     * @param indexFile
+     * @param msg
+     * @param idxKey
+     * @return
+     */
     private IndexFile putKey(IndexFile indexFile, DispatchRequest msg, String idxKey) {
         for (boolean ok = indexFile.putKey(idxKey, msg.getCommitLogOffset(), msg.getStoreTimestamp()); !ok; ) {
             log.warn("Index file [" + indexFile.getFileName() + "] is full, trying to create another one");
@@ -289,6 +305,10 @@ public class IndexService {
         return indexFile;
     }
 
+    /**
+     * 获取可写的indexFile 无则新建
+     * @return
+     */
     public IndexFile getAndCreateLastIndexFile() {
         IndexFile indexFile = null;
         IndexFile prevIndexFile = null;
@@ -298,6 +318,7 @@ public class IndexService {
         {
             this.readWriteLock.readLock().lock();
             if (!this.indexFileList.isEmpty()) {
+                // 最新的
                 IndexFile tmp = this.indexFileList.get(this.indexFileList.size() - 1);
                 if (!tmp.isWriteFull()) {
                     indexFile = tmp;

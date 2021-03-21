@@ -70,7 +70,7 @@ public class Message implements Serializable {
     }
 
     /**
-     * 多个key用','隔开，用于快速检索消息
+     * 多个key用' '隔开，用于快速检索消息
      * @param keys
      */
     public void setKeys(String keys) {
@@ -147,6 +147,7 @@ public class Message implements Serializable {
         StringBuffer sb = new StringBuffer();
         for (String k : keys) {
             sb.append(k);
+            // 若一个消息有多个key,采用空格隔开
             sb.append(MessageConst.KEY_SEPARATOR);
         }
 

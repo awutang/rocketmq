@@ -18,8 +18,12 @@ package org.apache.rocketmq.store;
 
 import java.nio.ByteBuffer;
 
+/**
+ * 查询结果结构
+ */
 public class SelectMappedBufferResult {
 
+    // commitLog目录下的offset
     private final long startOffset;
 
     private final ByteBuffer byteBuffer;
