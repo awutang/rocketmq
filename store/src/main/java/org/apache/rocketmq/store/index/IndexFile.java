@@ -66,6 +66,7 @@ public class IndexFile {
         this.hashSlotNum = hashSlotNum;
         this.indexNum = indexNum;
 
+        // indexHeader与indexItems+hashSlot指向同一块直接内存
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
         this.indexHeader = new IndexHeader(byteBuffer);
 
@@ -88,6 +89,9 @@ public class IndexFile {
         this.indexHeader.load();
     }
 
+    /**
+     * 刷到磁盘
+     */
     public void flush() {
         long beginTime = System.currentTimeMillis();
         if (this.mappedFile.hold()) {

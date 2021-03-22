@@ -379,6 +379,11 @@ public class ConsumeQueue {
         return lastOffset;
     }
 
+    /**
+     * consumeQueue数据刷到磁盘
+     * @param flushLeastPages
+     * @return
+     */
     public boolean flush(final int flushLeastPages) {
         boolean result = this.mappedFileQueue.flush(flushLeastPages);
         if (isExtReadEnable()) {
@@ -544,7 +549,8 @@ public class ConsumeQueue {
                 }
             }
             this.maxPhysicOffset = offset + size;
-            // 添加到consumeQueue中 wrotePosition --只追加不刷盘，consumeQueue刷盘方式是异步的 --myConfusion:只将数据写到fileChannel?不先经过writeBuffer吗？
+            // 添加到consumeQueue中 wrotePosition --只追加不刷盘，consumeQueue刷盘方式是异步的
+            // --myConfusion:只将数据写到fileChannel?不先经过writeBuffer吗？而且也没有数据存到mappedByteBuffer
             return mappedFile.appendMessage(this.byteBufferIndex.array());
         }
         return false;

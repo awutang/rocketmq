@@ -360,6 +360,7 @@ public class IndexService {
                 Thread flushThread = new Thread(new Runnable() {
                     @Override
                     public void run() {
+                        // 在更新当前indexFile时，将上一个已写满的indexFile刷到磁盘
                         IndexService.this.flush(flushThisFile);
                     }
                 }, "FlushIndexFileThread");

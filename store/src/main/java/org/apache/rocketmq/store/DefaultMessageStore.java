@@ -316,6 +316,7 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         this.flushConsumeQueueService.start();
+        // 启动commitLog commit+flush任务
         this.commitLog.start();
         this.storeStatsService.start();
 
@@ -1489,7 +1490,7 @@ public class DefaultMessageStore implements MessageStore {
         // 获取topic目录下最后一条数据对应的commitOffset+size
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 
-        // 恢复consumeQueue(两种策略)--那indexFile呢？
+        // 恢复commitLog(两种策略)--那indexFile呢？
         if (lastExitOK) {
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
