@@ -551,7 +551,7 @@ public class MappedFile extends ReferenceResource {
             return true;
         }
 
-        // 释放mappedByteBuffer
+        // 释放mappedByteBuffer--writeBuffer不需要被释放吗？--不需要，因为是一个可以循环使用的内存池
         clean(this.mappedByteBuffer);
 
         // 少了一个文件
@@ -563,7 +563,8 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 销毁MappedFile
+     * 销毁MappedFile 释放mappedByteBuffer、fileChannel关闭、
+     * writeBuffer在此时应该全部提交到fileChannel了，所以早就回收到transientStorePool中了
      * @param intervalForcibly
      * @return
      */

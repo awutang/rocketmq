@@ -138,6 +138,10 @@ public class MappedFileQueue {
         this.deleteExpiredFile(willRemoveFiles);
     }
 
+    /**
+     * 从list中删除
+     * @param files
+     */
     void deleteExpiredFile(List<MappedFile> files) {
 
         if (!files.isEmpty()) {
@@ -152,6 +156,7 @@ public class MappedFileQueue {
             }
 
             try {
+                // list中删除
                 if (!this.mappedFiles.removeAll(files)) {
                     log.error("deleteExpiredFile remove failed.");
                 }
@@ -371,6 +376,14 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 删除
+     * @param expiredTime：未更新的时间超过此则删除
+     * @param deleteFilesInterval：两次删除文件的时间间隔
+     * @param intervalForcibly：第一次拒绝删除之后能保留的最大时间，在这之后强制删除
+     * @param cleanImmediately：是否立刻删除
+     * @return
+     */
     public int deleteExpiredFileByTime(final long expiredTime,
         final int deleteFilesInterval,
         final long intervalForcibly,
@@ -384,10 +397,14 @@ public class MappedFileQueue {
         int deleteCount = 0;
         List<MappedFile> files = new ArrayList<MappedFile>();
         if (null != mfs) {
+            // 遍历commitLog目录下的所有文件
             for (int i = 0; i < mfsLength; i++) {
                 MappedFile mappedFile = (MappedFile) mfs[i];
+                // 存活时间点
                 long liveMaxTimestamp = mappedFile.getLastModifiedTimestamp() + expiredTime;
                 if (System.currentTimeMillis() >= liveMaxTimestamp || cleanImmediately) {
+                    // 过期或强制删除
+                    // 删除:释放占用的内存资源+从磁盘上删除
                     if (mappedFile.destroy(intervalForcibly)) {
                         files.add(mappedFile);
                         deleteCount++;
@@ -398,6 +415,7 @@ public class MappedFileQueue {
 
                         if (deleteFilesInterval > 0 && (i + 1) < mfsLength) {
                             try {
+                                // 间隔
                                 Thread.sleep(deleteFilesInterval);
                             } catch (InterruptedException e) {
                             }
@@ -412,6 +430,7 @@ public class MappedFileQueue {
             }
         }
 
+        // 从mappedFileQueue.mappedFiles中删除
         deleteExpiredFile(files);
 
         return deleteCount;

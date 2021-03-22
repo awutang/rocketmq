@@ -144,6 +144,14 @@ public class CommitLog {
         return this.mappedFileQueue.remainHowManyDataToFlush();
     }
 
+    /**
+     * commitLog目录下删除文件
+     * @param expiredTime
+     * @param deleteFilesInterval
+     * @param intervalForcibly
+     * @param cleanImmediately
+     * @return
+     */
     public int deleteExpiredFile(
         final long expiredTime,
         final int deleteFilesInterval,

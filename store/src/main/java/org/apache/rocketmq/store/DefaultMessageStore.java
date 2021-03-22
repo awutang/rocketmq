@@ -1357,9 +1357,17 @@ public class DefaultMessageStore implements MessageStore {
         log.info(fileName + (result ? " create OK" : " already exists"));
     }
 
+    /**
+     * 添加各种定时任务
+     */
     private void addScheduleTask() {
 
+        // 过期文件删除
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+            /**
+             * 1. 在一定时间内，如果文件没有更新操作，则认为是过期文件，可以被删除
+             *     1. 即使文件中的消息没有被全部消费
+             */
             @Override
             public void run() {
                 DefaultMessageStore.this.cleanFilesPeriodically();
@@ -1407,6 +1415,9 @@ public class DefaultMessageStore implements MessageStore {
         }, 1000L, 10000L, TimeUnit.MILLISECONDS);
     }
 
+    /**
+     * 删除过期commitLog与consumeQueue
+     */
     private void cleanFilesPeriodically() {
         this.cleanCommitLogService.run();
         this.cleanConsumeQueueService.run();
@@ -1710,6 +1721,9 @@ public class DefaultMessageStore implements MessageStore {
             DefaultMessageStore.log.info("executeDeleteFilesManually was invoked");
         }
 
+        /**
+         * 删除过期commitLog
+         */
         public void run() {
             try {
                 this.deleteExpiredFiles();
@@ -1720,21 +1734,30 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        /**
+         * 删除过期commitLog
+         */
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            // 文件保留时间 最后一次更新到现在的时间如果超过该时间则认为是过期文件
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            // 两次删除文件的时间间隔
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            // 第一次拒绝删除之后能保留的最大时间，在这之后强制删除
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
             boolean timeup = this.isTimeToDelete();
+            // cleanImmediately
             boolean spacefull = this.isSpaceToDelete();
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
             if (timeup || spacefull || manualDelete) {
+                // 到达指定时间点、磁盘空间不够、手动指定则删除文件
 
                 if (manualDelete)
                     this.manualDeleteFileSeveralTimes--;
 
+                // 立刻删除
                 boolean cleanAtOnce = DefaultMessageStore.this.getMessageStoreConfig().isCleanFileForciblyEnable() && this.cleanImmediately;
 
                 log.info("begin to delete before {} hours file. timeup: {} spacefull: {} manualDeleteFileSeveralTimes: {} cleanAtOnce: {}",
@@ -1743,9 +1766,10 @@ public class DefaultMessageStore implements MessageStore {
                     spacefull,
                     manualDeleteFileSeveralTimes,
                     cleanAtOnce);
-
+                // 小时
                 fileReservedTime *= 60 * 60 * 1000;
 
+                // 删除commitLog目录下的文件
                 deleteCount = DefaultMessageStore.this.commitLog.deleteExpiredFile(fileReservedTime, deletePhysicFilesInterval,
                     destroyMapedFileIntervalForcibly, cleanAtOnce);
                 if (deleteCount > 0) {
@@ -1771,6 +1795,10 @@ public class DefaultMessageStore implements MessageStore {
             return CleanCommitLogService.class.getSimpleName();
         }
 
+        /**
+         * 删除文件的时间点
+         * @return
+         */
         private boolean isTimeToDelete() {
             String when = DefaultMessageStore.this.getMessageStoreConfig().getDeleteWhen();
             if (UtilAll.isItTimeToDo(when)) {
@@ -1781,14 +1809,22 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
+        /**
+         * 磁盘空间是否足够
+         * @return
+         */
         private boolean isSpaceToDelete() {
+
+            // commitLog或consumeQueue文件所在磁盘分区的最大使用率
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
             cleanImmediately = false;
 
             {
+                // 当前commitLog目录所在磁盘分区的磁盘使用率
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(getStorePathPhysic());
                 if (physicRatio > diskSpaceWarningLevelRatio) {
+                    // 使磁盘拒绝新消息的写入
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
                     if (diskok) {
                         DefaultMessageStore.log.error("physic disk maybe full soon " + physicRatio + ", so mark disk full");
@@ -1798,6 +1834,7 @@ public class DefaultMessageStore implements MessageStore {
                 } else if (physicRatio > diskSpaceCleanForciblyRatio) {
                     cleanImmediately = true;
                 } else {
+                    // 磁盘恢复可写
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskOK();
                     if (!diskok) {
                         DefaultMessageStore.log.info("physic disk space OK " + physicRatio + ", so mark disk ok");
@@ -1811,6 +1848,7 @@ public class DefaultMessageStore implements MessageStore {
             }
 
             {
+                // consumeQueue总目录
                 String storePathLogics = StorePathConfigHelper
                     .getStorePathConsumeQueue(DefaultMessageStore.this.getMessageStoreConfig().getStorePathRootDir());
                 double logicsRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogics);
