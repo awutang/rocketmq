@@ -182,6 +182,10 @@ public class DefaultMessageStore implements MessageStore {
         lockFile = new RandomAccessFile(file, "rw");
     }
 
+    /**
+     * 删除consumeQueue中多余数据（相比commitLog而言）
+     * @param phyOffset
+     */
     public void truncateDirtyLogicFiles(long phyOffset) {
         ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
 
@@ -193,31 +197,41 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
+     * 若消息存储在commitLog中，但由于某个broker突然宕机导致转发任务未成功执行，则consumeQueue、indexFile与commitLog数据不一致，
+     * 那如何使得他们三者保持最终一致性呢？--myConfusion:当broker重新启动之后，ReputMessageService线程不也是可以重新开始执行吗？reputFromOffset可以得到commitLog.getMinOffset()也不会跳过数据
+     *
      * @throws IOException
      */
     public boolean load() {
         boolean result = true;
 
         try {
+            // 1. 判断上一次退出是否正常
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
+            // 2. 延时队列，与定时消息相关
             if (null != scheduleMessageService) {
                 result = result && this.scheduleMessageService.load();
             }
 
+            // 3. 加载commitLog--其实都是加载到当前defaultMessageStore对象中 commitLog.getMinOffset()也得到了
             // load Commit Log
             result = result && this.commitLog.load();
 
+            // 4.加载consumeQueue--consumeQueue.maxPhysicOffset并未得到
             // load Consume Queue
             result = result && this.loadConsumeQueue();
 
             if (result) {
+                // 5.加载checkpoint文件
                 this.storeCheckpoint =
                     new StoreCheckpoint(StorePathConfigHelper.getStoreCheckpoint(this.messageStoreConfig.getStorePathRootDir()));
 
+                // 6.加载indexFile
                 this.indexService.load(lastExitOK);
 
+                // 7. 根据broker上一次是否正常退出从而执行不同的恢复策略
                 this.recover(lastExitOK);
 
                 log.info("load over, and the max phy offset = {}", this.getMaxPhyOffset());
@@ -1411,29 +1425,41 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 判断abort文件是否存在，因为broker在启动时创建abort文件，在退出时通过jvm hook方法删除abort文件，所以如果在broker启动时
+     * 存在abort文件说明上一次broker是异常退出的
+     * @return
+     */
     private boolean isTempFileExist() {
         String fileName = StorePathConfigHelper.getAbortFile(this.messageStoreConfig.getStorePathRootDir());
         File file = new File(fileName);
         return file.exists();
     }
 
+    /**
+     * 加载consumeQueue
+     * @return
+     */
     private boolean loadConsumeQueue() {
         File dirLogic = new File(StorePathConfigHelper.getStorePathConsumeQueue(this.messageStoreConfig.getStorePathRootDir()));
         File[] fileTopicList = dirLogic.listFiles();
         if (fileTopicList != null) {
 
             for (File fileTopic : fileTopicList) {
+                // topic目录
                 String topic = fileTopic.getName();
 
                 File[] fileQueueIdList = fileTopic.listFiles();
                 if (fileQueueIdList != null) {
                     for (File fileQueueId : fileQueueIdList) {
+                        // queueId目录
                         int queueId;
                         try {
                             queueId = Integer.parseInt(fileQueueId.getName());
                         } catch (NumberFormatException e) {
                             continue;
                         }
+                        // 新建consumeQueue放入consumeQueueTable
                         ConsumeQueue logic = new ConsumeQueue(
                             topic,
                             queueId,
@@ -1454,15 +1480,23 @@ public class DefaultMessageStore implements MessageStore {
         return true;
     }
 
+    /**
+     * 恢复
+     * @param lastExitOK
+     */
     private void recover(final boolean lastExitOK) {
+
+        // 获取topic目录下最后一条数据对应的commitOffset+size
         long maxPhyOffsetOfConsumeQueue = this.recoverConsumeQueue();
 
+        // 恢复consumeQueue(两种策略)--那indexFile呢？
         if (lastExitOK) {
             this.commitLog.recoverNormally(maxPhyOffsetOfConsumeQueue);
         } else {
             this.commitLog.recoverAbnormally(maxPhyOffsetOfConsumeQueue);
         }
 
+        // 恢复consumeQueue之后，commitLog对象中也要更新topic+queueId对应的写位置（当前存储逻辑偏移量）
         this.recoverTopicQueueTable();
     }
 
@@ -1485,12 +1519,18 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 恢复consumeQueue,获取所有topic对应队列中的最大偏移量
+     * @return
+     */
     private long recoverConsumeQueue() {
         long maxPhysicOffset = -1;
         for (ConcurrentMap<Integer, ConsumeQueue> maps : this.consumeQueueTable.values()) {
             for (ConsumeQueue logic : maps.values()) {
+                //
                 logic.recover();
                 if (logic.getMaxPhysicOffset() > maxPhysicOffset) {
+                    // 获取topic目录下最后一条数据对应的commitOffset+size
                     maxPhysicOffset = logic.getMaxPhysicOffset();
                 }
             }
@@ -1499,6 +1539,9 @@ public class DefaultMessageStore implements MessageStore {
         return maxPhysicOffset;
     }
 
+    /**
+     * 恢复consumeQueue之后，commitLog对象中也要更新topic+queueId对应的写位置（当前存储逻辑偏移量）
+     */
     public void recoverTopicQueueTable() {
         HashMap<String/* topic-queueid */, Long/* offset */> table = new HashMap<String, Long>(1024);
         long minPhyOffset = this.commitLog.getMinOffset();

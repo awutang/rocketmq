@@ -66,8 +66,8 @@ public class MappedFile extends ReferenceResource {
     // 消息在当前MappedFile中的偏移量
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
 
-    // 当前MappedFile的提交指针，提交到内存映射ByteBuffer中，提交到哪？ByteBuffer不也是属于当前MappedFile的吗？--是从writeBuffer写出到mappedByteBuffer
-    // writeBuffer中的提交指针，之前的数据都以提交到mappedByteBuffer
+    // 当前MappedFile的提交指针，提交到内存映射ByteBuffer中，提交到哪？ByteBuffer不也是属于当前MappedFile的吗？--是从writeBuffer写出到mappedByteBuffer--写到fileChannel
+    // writeBuffer中的提交指针，之前的数据都以提交到fileChannel
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
     // 刷到磁盘的指针，在这之前的数据都已刷到磁盘
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
@@ -208,6 +208,11 @@ public class MappedFile extends ReferenceResource {
         try {
             this.fileChannel = new RandomAccessFile(this.file, "rw").getChannel();
             // jdk nio mappedByteBuffer是fileChannel对应的一块内存，mappedByteBuffer类似于fileChannel的内核缓冲区
+            /**MappedByteBuffer的get方法最终通过DirectByteBuffer.get方法实现的。
+             * map0()函数返回一个地址address，这样就无需调用read或write方法对文件进行读写，通过address就能够操作文件。
+             * get方法底层采用unsafe.getByte方法，通过（address + 偏移量）获取指定内存的数据。
+             第一次访问address所指向的内存区域，导致缺页中断，中断响应函数会在交换区中查找相对应的页面，如果找不到（也就是该文件从来没有被读入内存的情况），则从硬盘上将文件指定页读取到物理内存中（非jvm堆内存）。
+             如果在拷贝数据时，发现物理内存不够用，则会通过虚拟内存机制（swap）将暂时不用的物理页面交换到硬盘的虚拟内存中。*/
             this.mappedByteBuffer = this.fileChannel.map(MapMode.READ_WRITE, 0, fileSize);
             TOTAL_MAPPED_VIRTUAL_MEMORY.addAndGet(fileSize);
             TOTAL_MAPPED_FILES.incrementAndGet();
@@ -297,6 +302,11 @@ public class MappedFile extends ReferenceResource {
         return this.fileFromOffset;
     }
 
+    /**
+     * 只将数据写到fileChannel
+     * @param data
+     * @return
+     */
     public boolean appendMessage(final byte[] data) {
         int currentPos = this.wrotePosition.get();
 

@@ -182,6 +182,7 @@ public class CommitLog {
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
+            // 从倒数第三个commitLog文件开始往后处理
             // Began to recover from the last third file
             int index = mappedFiles.size() - 3;
             if (index < 0)
@@ -191,17 +192,21 @@ public class CommitLog {
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
+            // 循环
             while (true) {
+                // commitLog中一条消息构建转发对象
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover);
                 int size = dispatchRequest.getMsgSize();
                 // Normal data
                 if (dispatchRequest.isSuccess() && size > 0) {
+                    // commitLog文件中分发的字节数
                     mappedFileOffset += size;
                 }
                 // Come the end of the file, switch to the next file Since the
                 // return 0 representatives met last hole,
                 // this can not be included in truncate offset
                 else if (dispatchRequest.isSuccess() && size == 0) {
+                    // 已到文件末尾，需要处理下一个commitLog文件了
                     index++;
                     if (index >= mappedFiles.size()) {
                         // Current branch can not happen
@@ -217,17 +222,19 @@ public class CommitLog {
                 }
                 // Intermediate file read error
                 else if (!dispatchRequest.isSuccess()) {
+                    // 该commitLog文件未填满所有消息,说明文件已经遍历完成了
                     log.info("recover physics file end, " + mappedFile.getFileName());
                     break;
                 }
             }
 
             processOffset += mappedFileOffset;
+            // 更新，因为processOffset之前的这些数据其实已经写到磁盘了，所以三者可以如下赋值
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
             this.mappedFileQueue.truncateDirtyFiles(processOffset);
 
-            // Clear ConsumeQueue redundant data
+            // Clear ConsumeQueue redundant（多余的） data
             if (maxPhyOffsetOfConsumeQueue >= processOffset) {
                 log.warn("maxPhyOffsetOfConsumeQueue({}) >= processOffset({}), truncate dirty logic files", maxPhyOffsetOfConsumeQueue, processOffset);
                 this.defaultMessageStore.truncateDirtyLogicFiles(processOffset);
@@ -435,12 +442,18 @@ public class CommitLog {
         this.confirmOffset = phyOffset;
     }
 
+    /**
+     * 恢复-当上一次异常退出时 将最后一个有效文件及之后文件的消息全部进行转发--有效数据之前肯定转发过，因此存在重复转发情况，消息消费时做好幂等
+     * @param maxPhyOffsetOfConsumeQueue
+     */
     @Deprecated
     public void recoverAbnormally(long maxPhyOffsetOfConsumeQueue) {
         // recover by the minimum time stamp
         boolean checkCRCOnRecover = this.defaultMessageStore.getMessageStoreConfig().isCheckCRCOnRecover();
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
+
+            // 从最后一个文件开始往前寻找第一个正确存储的commitLog文件
             // Looking beginning to recover from which file
             int index = mappedFiles.size() - 1;
             MappedFile mappedFile = null;
@@ -461,6 +474,7 @@ public class CommitLog {
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
             while (true) {
+                // 根据一条消息构建转发对象、转发
                 DispatchRequest dispatchRequest = this.checkMessageAndReturnSize(byteBuffer, checkCRCOnRecover);
                 int size = dispatchRequest.getMsgSize();
 
@@ -481,6 +495,7 @@ public class CommitLog {
                     // Since the return 0 representatives met last hole, this can
                     // not be included in truncate offset
                     else if (size == 0) {
+                        // 往后下一个文件，即使下一个文件无效也继续转发？
                         index++;
                         if (index >= mappedFiles.size()) {
                             // The current branch under normal circumstances should
@@ -501,6 +516,7 @@ public class CommitLog {
                 }
             }
 
+            // 设置各个指针
             processOffset += mappedFileOffset;
             this.mappedFileQueue.setFlushedWhere(processOffset);
             this.mappedFileQueue.setCommittedWhere(processOffset);
@@ -508,6 +524,7 @@ public class CommitLog {
 
             // Clear ConsumeQueue redundant data
             if (maxPhyOffsetOfConsumeQueue >= processOffset) {
+                // FlushedWhere之后的数据需要删除--consumeQueue中的
                 log.warn("maxPhyOffsetOfConsumeQueue({}) >= processOffset({}), truncate dirty logic files", maxPhyOffsetOfConsumeQueue, processOffset);
                 this.defaultMessageStore.truncateDirtyLogicFiles(processOffset);
             }
@@ -517,10 +534,16 @@ public class CommitLog {
             log.warn("The commitlog files are deleted, and delete the consume queue files");
             this.mappedFileQueue.setFlushedWhere(0);
             this.mappedFileQueue.setCommittedWhere(0);
+            // 因为无commitLog文件，因此也要删除consumeQueue
             this.defaultMessageStore.destroyLogics();
         }
     }
 
+    /**
+     * 判断是否为正确文件
+     * @param mappedFile
+     * @return
+     */
     private boolean isMappedFileMatchedRecover(final MappedFile mappedFile) {
         ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
 
@@ -537,9 +560,11 @@ public class CommitLog {
             return false;
         }
 
+        // 返回true
         if (this.defaultMessageStore.getMessageStoreConfig().isMessageIndexEnable()
             && this.defaultMessageStore.getMessageStoreConfig().isMessageIndexSafe()) {
             if (storeTimestamp <= this.defaultMessageStore.getStoreCheckpoint().getMinTimestampIndex()) {
+                // 当前文件中的第一条数据的存储时间戳小于checkpoint,说明该文件部分消息是有效的
                 log.info("find check timestamp, {} {}",
                     storeTimestamp,
                     UtilAll.timeMillisToHumanString(storeTimestamp));

@@ -258,6 +258,7 @@ public class BrokerController {
             }
         }
 
+        // 加载commitLog consumeQueue indexFile到内存
         result = result && this.messageStore.load();
 
         if (result) {

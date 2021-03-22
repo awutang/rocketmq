@@ -91,6 +91,10 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 加载consumeQueue
+     * @return
+     */
     public boolean load() {
         boolean result = this.mappedFileQueue.load();
         log.info("load consume queue " + this.topic + "-" + this.queueId + " " + (result ? "OK" : "Failed"));
@@ -100,28 +104,47 @@ public class ConsumeQueue {
         return result;
     }
 
+    /**
+     * 恢复consumeQueue
+     */
     public void recover() {
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
         if (!mappedFiles.isEmpty()) {
 
+            // 从倒数第三个文件开始
             int index = mappedFiles.size() - 3;
             if (index < 0)
                 index = 0;
 
             int mappedFileSizeLogics = this.mappedFileSize;
             MappedFile mappedFile = mappedFiles.get(index);
+
+            // 可是consumeQueue.load()之后，mappedByteBuffer其实是没有数据的--内存映射、缺页中断
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
             long processOffset = mappedFile.getFileFromOffset();
             long mappedFileOffset = 0;
             long maxExtAddr = 1;
             while (true) {
                 for (int i = 0; i < mappedFileSizeLogics; i += CQ_STORE_UNIT_SIZE) {
+                    /**
+                     * 1.map0()函数返回一个地址address，这样就无需调用read或write方法对文件进行读写，通过address就能够操作文件。
+                     * 2.MappedByteBuffer的get方法最终通过DirectByteBuffer.get方法实现的。底层采用unsafe.getByte方法，通过（address + 偏移量）获取指定内存的数据。
+                     第一次访问address所指向的内存区域，导致缺页中断，中断响应函数会在交换区中查找相对应的页面，如果找不到（也就是该文件从来没有被读入内存的情况），则从硬盘上将文件指定页读取到物理内存中（非jvm堆内存）。
+                     如果在拷贝数据时，发现物理内存不够用，则会通过虚拟内存机制（swap）将暂时不用的物理页面交换到硬盘的虚拟内存中。
+                       3.因此之前我的疑惑“mappedByteBuffer其实是没有数据的即内存中没有数据，怎么可能读取到offset等数据？”，但是由于内存映射
+                     可以直接操作磁盘文件，因此通过缺页中断页面置换，将磁盘中的数据读进来--这其实就是内存映射mmap系统调用的魅力所在了
+
+                     内存映射文件的作用是使一个磁盘文件与存储空间中的一个缓冲区建立映射关系（文件映射到虚拟内存），然后当从缓冲区中取数据，就相当于读文件中的相应字节；
+                     而将数据存入缓冲区，就相当于写文件中的相应字节。这样就可以不使用read和write直接执行I/O了*/
                     long offset = byteBuffer.getLong();
                     int size = byteBuffer.getInt();
                     long tagsCode = byteBuffer.getLong();
 
                     if (offset >= 0 && size > 0) {
+                        // 处理的总字节数
                         mappedFileOffset = i + CQ_STORE_UNIT_SIZE;
+
+                        // 获取topic+queueId目录下最后一条数据对应的commitOffset+size
                         this.maxPhysicOffset = offset + size;
                         if (isExtAddr(tagsCode)) {
                             maxExtAddr = tagsCode;
@@ -521,7 +544,7 @@ public class ConsumeQueue {
                 }
             }
             this.maxPhysicOffset = offset + size;
-            // 添加到consumeQueue中 wrotePosition --只追加不刷盘，consumeQueue刷盘方式是异步的
+            // 添加到consumeQueue中 wrotePosition --只追加不刷盘，consumeQueue刷盘方式是异步的 --myConfusion:只将数据写到fileChannel?不先经过writeBuffer吗？
             return mappedFile.appendMessage(this.byteBufferIndex.array());
         }
         return false;

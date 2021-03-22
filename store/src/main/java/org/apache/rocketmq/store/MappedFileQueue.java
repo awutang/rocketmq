@@ -161,6 +161,10 @@ public class MappedFileQueue {
         }
     }
 
+    /**
+     * 加载commitLog/consumeQueue
+     * @return
+     */
     public boolean load() {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
@@ -176,6 +180,7 @@ public class MappedFileQueue {
                 }
 
                 try {
+                    // 创建MappedFile对象，放入mappedFiles中
                     MappedFile mappedFile = new MappedFile(file.getPath(), mappedFileSize);
 
                     mappedFile.setWrotePosition(this.mappedFileSize);

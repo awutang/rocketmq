@@ -55,10 +55,16 @@ public class IndexService {
             StorePathConfigHelper.getStorePathIndex(store.getMessageStoreConfig().getStorePathRootDir());
     }
 
+    /**
+     * 加载indexFile
+     * @param lastExitOK
+     * @return
+     */
     public boolean load(final boolean lastExitOK) {
         File dir = new File(this.storePath);
         File[] files = dir.listFiles();
         if (files != null) {
+            // index目录
             // ascending order
             Arrays.sort(files);
             for (File file : files) {
@@ -75,6 +81,7 @@ public class IndexService {
                     }
 
                     log.info("load index file OK, " + f.getFileName());
+                    // 加载到indexFileList中
                     this.indexFileList.add(f);
                 } catch (IOException e) {
                     log.error("load file {} error", file, e);

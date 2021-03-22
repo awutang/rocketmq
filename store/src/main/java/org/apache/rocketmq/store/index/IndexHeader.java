@@ -54,6 +54,9 @@ public class IndexHeader {
         this.byteBuffer = byteBuffer;
     }
 
+    /**
+     * 设置indexHeader
+     */
     public void load() {
         this.beginTimestamp.set(byteBuffer.getLong(beginTimestampIndex));
         this.endTimestamp.set(byteBuffer.getLong(endTimestampIndex));
