@@ -84,6 +84,9 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.remoting.netty.NettyClientConfig;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+/**
+ * client对象 比如producer consumer
+ */
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
@@ -91,7 +94,9 @@ public class MQClientInstance {
     private final int instanceIndex;
     private final String clientId;
     private final long bootTimestamp = System.currentTimeMillis();
+    // producer map
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
+    // 消费者map
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<String, MQAdminExtInner>();
     private final NettyClientConfig nettyClientConfig;
@@ -233,7 +238,7 @@ public class MQClientInstance {
     }
 
     /**
-     * 启动MQClientInstance对象
+     * 启动MQClientInstance对象,在同一个jvm中，producer与consumer有同一个mqClientInstance对象(比如某个应用既可以是消费者又可以是生产者)，因此只会启动一次
      * @throws MQClientException
      */
     public void start() throws MQClientException {
@@ -251,7 +256,7 @@ public class MQClientInstance {
                     this.mQClientAPIImpl.start();
                     // Start various schedule tasks
                     this.startScheduledTask();
-                    // Start pull service
+                    // Start pull service 开始拉取消费消息
                     this.pullMessageService.start();
                     // Start rebalance service
                     this.rebalanceService.start();
@@ -894,6 +899,12 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 注册consumer
+     * @param group
+     * @param consumer
+     * @return
+     */
     public boolean registerConsumer(final String group, final MQConsumerInner consumer) {
         if (null == group || null == consumer) {
             return false;

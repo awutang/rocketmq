@@ -42,6 +42,12 @@ import org.apache.rocketmq.srvutil.ServerUtil;
 
 public class Producer {
 
+    /**
+     * 生产者启动
+     * @param args
+     * @throws MQClientException
+     * @throws UnsupportedEncodingException
+     */
     public static void main(String[] args) throws MQClientException, UnsupportedEncodingException {
 
         Options options = ServerUtil.buildCommandlineOptions(new Options());
@@ -117,6 +123,7 @@ public class Producer {
 
         producer.setCompressMsgBodyOverHowmuch(Integer.MAX_VALUE);
 
+        // producer启动
         producer.start();
 
         for (int i = 0; i < threadCount; i++) {

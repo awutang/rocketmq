@@ -42,6 +42,13 @@ import org.apache.rocketmq.common.message.MessageExt;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.srvutil.ServerUtil;
 
+/**
+ * 消费者启动 可以通过java [-options] class [args...]
+ *            (执行类)
+ *    或  java [-options] -jar jarfile [args...]
+ *            (执行 jar 文件)
+ *   来启动进程，但是这是启动一个进程，如果想在一个进程上既有producer又有consumer,那么就需要将producer与consumer作为线程启动了--在halo上其实是依赖一个对象初始化时启动consumer相关线程的
+ */
 public class Consumer {
 
     public static void main(String[] args) throws MQClientException, IOException {
@@ -172,6 +179,7 @@ public class Consumer {
             }
         });
 
+        // consumer启动
         consumer.start();
 
         System.out.printf("Consumer Started.%n");

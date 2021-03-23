@@ -44,6 +44,8 @@ public interface MQConsumer extends MQAdmin {
     /**
      * Fetch message queues from consumer cache according to the topic
      *
+     * 消费者对topic分配了哪些队列--myConfusion:消费者可以消费topic的哪些队列是配置的吗？
+     *
      * @param topic message topic
      * @return queue set
      */

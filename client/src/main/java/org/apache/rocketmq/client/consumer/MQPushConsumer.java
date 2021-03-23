@@ -23,6 +23,8 @@ import org.apache.rocketmq.client.exception.MQClientException;
 
 /**
  * Push consumer
+ *
+ * 推模式消费者
  */
 public interface MQPushConsumer extends MQConsumer {
     /**
@@ -46,7 +48,7 @@ public interface MQPushConsumer extends MQConsumer {
     void registerMessageListener(final MessageListenerOrderly messageListener);
 
     /**
-     * Subscribe some topic
+     * Subscribe some topic 消费者订阅主题，可以具体到队列吗？
      *
      * @param subExpression subscription expression.it only support or operation such as "tag1 || tag2 || tag3" <br> if
      * null or * expression,meaning subscribe
