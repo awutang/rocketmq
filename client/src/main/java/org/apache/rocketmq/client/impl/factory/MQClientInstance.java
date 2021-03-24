@@ -96,7 +96,7 @@ public class MQClientInstance {
     private final long bootTimestamp = System.currentTimeMillis();
     // producer map
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<String, MQProducerInner>();
-    // 消费者map
+    // 消费者组：消费者
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<String, MQConsumerInner>();
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<String, MQAdminExtInner>();
     private final NettyClientConfig nettyClientConfig;
@@ -910,6 +910,7 @@ public class MQClientInstance {
             return false;
         }
 
+        // 一个组的不同consumer在map中难道不会覆盖吗？
         MQConsumerInner prev = this.consumerTable.putIfAbsent(group, consumer);
         if (prev != null) {
             log.warn("the consumer group[" + group + "] exist already.");

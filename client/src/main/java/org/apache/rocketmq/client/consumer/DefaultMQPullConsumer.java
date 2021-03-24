@@ -290,6 +290,10 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
         return this.defaultMQPullConsumerImpl.fetchSubscribeMessageQueues(withNamespace(topic));
     }
 
+    /**
+     * 启动PULL模式的consumer
+     * @throws MQClientException
+     */
     @Override
     public void start() throws MQClientException {
         this.setConsumerGroup(NamespaceUtil.wrapNamespace(this.getNamespace(), this.consumerGroup));

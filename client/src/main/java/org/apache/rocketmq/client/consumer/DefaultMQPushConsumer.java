@@ -92,6 +92,9 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * This field defaults to clustering.
      *
      * 集群、广播
+     *
+     * 因为广播模式下，每个消费者都要消费到所有消息，所以对于消息队列来说都要访问到，所以广播模式就没有队列均衡负载的概念了；
+     * 集群模式下某个消费者消费了某一条消息后另一个消费者不能再次访问队列去获取消息了，所以存在如何安排访问队列使得所有队列接收到的访问量是均衡的问题（这就是消息队列负载均衡）
      */
     private MessageModel messageModel = MessageModel.CLUSTERING;
 
