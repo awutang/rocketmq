@@ -136,6 +136,7 @@ public abstract class ServiceThread implements Runnable {
         waitPoint.reset();
 
         try {
+            // 直到为0才返回
             waitPoint.await(interval, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
             log.error("Interrupted", e);

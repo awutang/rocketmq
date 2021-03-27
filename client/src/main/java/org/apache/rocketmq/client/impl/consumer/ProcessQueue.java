@@ -37,36 +37,66 @@ import org.apache.rocketmq.common.protocol.body.ProcessQueueInfo;
 
 /**
  * Queue consumption snapshot
+ *
+ * 从broker拉取的消息先放在这里，然后再提交到消费线程池
  */
 public class ProcessQueue {
+
+    // 锁的存活时间
     public final static long REBALANCE_LOCK_MAX_LIVE_TIME =
         Long.parseLong(System.getProperty("rocketmq.client.rebalance.lockMaxLiveTime", "30000"));
     public final static long REBALANCE_LOCK_INTERVAL = Long.parseLong(System.getProperty("rocketmq.client.rebalance.lockInterval", "20000"));
+
+    // PullMessageService空闲时间
     private final static long PULL_MAX_IDLE_TIME = Long.parseLong(System.getProperty("rocketmq.client.pull.pullMaxIdleTime", "120000"));
     private final InternalLogger log = ClientLogger.getLog();
+
+    // 读写锁，控制多线程并发读写msgTreeMap
     private final ReadWriteLock lockTreeMap = new ReentrantReadWriteLock();
+
+    // 消息存储容器 消息在consumeQueue中的offset:消息实体
     private final TreeMap<Long, MessageExt> msgTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong msgCount = new AtomicLong();
     private final AtomicLong msgSize = new AtomicLong();
     private final Lock lockConsume = new ReentrantLock();
     /**
      * A subset of msgTreeMap, will only be used when orderly consume
+     * 在从msgTreeMap取出消息前先存到consumingMsgOrderlyTreeMap
      */
     private final TreeMap<Long, MessageExt> consumingMsgOrderlyTreeMap = new TreeMap<Long, MessageExt>();
     private final AtomicLong tryUnlockTimes = new AtomicLong(0);
+
+    // processQueue包含的最大队列偏移量
     private volatile long queueOffsetMax = 0L;
+
+    // 当前ProcessQueue是否被丢弃
     private volatile boolean dropped = false;
+
+    // 上一次开始拉取消息时间戳
     private volatile long lastPullTimestamp = System.currentTimeMillis();
+
+    // 上一次消费时间戳
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
+
+    // 通过locked变量对processQueue进行同步控制，实际并没有加锁
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();
+
     private volatile boolean consuming = false;
     private volatile long msgAccCnt = 0;
 
+    /**
+     * 判断锁是否过期
+     * @return
+     */
     public boolean isLockExpired() {
         return (System.currentTimeMillis() - this.lastLockTimestamp) > REBALANCE_LOCK_MAX_LIVE_TIME;
     }
 
+    /**
+     * 判断PullMessageService是否空闲
+     * @return
+     */
     public boolean isPullExpired() {
         return (System.currentTimeMillis() - this.lastPullTimestamp) > PULL_MAX_IDLE_TIME;
     }
@@ -296,6 +326,11 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * 从ProcessQueue中取出batchSize条数据
+     * @param batchSize
+     * @return
+     */
     public List<MessageExt> takeMessages(final int batchSize) {
         List<MessageExt> result = new ArrayList<MessageExt>(batchSize);
         final long now = System.currentTimeMillis();

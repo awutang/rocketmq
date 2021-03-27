@@ -21,6 +21,9 @@ import java.util.ArrayList;
 import java.util.List;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * 消息拉取result
+ */
 public class GetMessageResult {
 
     private final List<SelectMappedBufferResult> messageMapedList =
@@ -29,8 +32,14 @@ public class GetMessageResult {
     private final List<ByteBuffer> messageBufferList = new ArrayList<ByteBuffer>(100);
 
     private GetMessageStatus status;
+
+    // 下一次此consumeQueue获取消息的位置
     private long nextBeginOffset;
+
+    // topic+queueId目录下所有文件所有消息的最小偏移量
     private long minOffset;
+
+    // topic+queueId目录下所有文件所有消息的最大偏移量
     private long maxOffset;
 
     private int bufferTotalSize = 0;

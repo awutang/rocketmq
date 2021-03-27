@@ -570,7 +570,7 @@ public class ConsumeQueue {
 
     /**
      * 根据index获取队列中的元素
-     * @param startIndex：是consumequeue目录下的全局逻辑offset吗？
+     * @param startIndex：是consumequeue目录下的全局逻辑offset吗？--是的
      * @return
      */
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {

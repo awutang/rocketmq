@@ -29,11 +29,16 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.store.ConsumeQueueExt;
 
+/**
+ * broker挂起执行 判断消息是否到达队列
+ */
 public class PullRequestHoldService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_QUEUEID_SEPARATOR = "@";
     private final BrokerController brokerController;
     private final SystemClock systemClock = new SystemClock();
+
+    // topic+queueId:多个拉取请求
     private ConcurrentMap<String/* topic@queueId */, ManyPullRequest> pullRequestTable =
         new ConcurrentHashMap<String, ManyPullRequest>(1024);
 
@@ -63,14 +68,21 @@ public class PullRequestHoldService extends ServiceThread {
         return sb.toString();
     }
 
+    /**
+     * 按不同策略执行
+     */
     @Override
     public void run() {
         log.info("{} service started", this.getServiceName());
+        // 一直执行，直到broker shutdown,因为挂起操作是针对所有消息的
         while (!this.isStopped()) {
             try {
                 if (this.brokerController.getBrokerConfig().isLongPollingEnable()) {
+                    // 每5s执行一次checkHoldRequest()，总共耗时（执行+等待）不超过timeOut
+                    // 未找到当前对象countDownLatch.countDown()的入口，应该都是超时之后唤醒的？
                     this.waitForRunning(5 * 1000);
                 } else {
+                    // ShortPollingTimeMills执行一次checkHoldRequest()
                     this.waitForRunning(this.brokerController.getBrokerConfig().getShortPollingTimeMills());
                 }
 
@@ -93,6 +105,9 @@ public class PullRequestHoldService extends ServiceThread {
         return PullRequestHoldService.class.getSimpleName();
     }
 
+    /**
+     * 判断消息是否已经到达topic+queueId目录
+     */
     private void checkHoldRequest() {
         for (String key : this.pullRequestTable.keySet()) {
             String[] kArray = key.split(TOPIC_QUEUEID_SEPARATOR);
@@ -113,10 +128,22 @@ public class PullRequestHoldService extends ServiceThread {
         notifyMessageArriving(topic, queueId, maxOffset, null, 0, null, null);
     }
 
+    /**
+     * 有两个触发入口：1.countDownLatch超时，2.reputMessageService
+     * @param topic
+     * @param queueId
+     * @param maxOffset
+     * @param tagsCode
+     * @param msgStoreTime
+     * @param filterBitMap
+     * @param properties
+     */
     public void notifyMessageArriving(final String topic, final int queueId, final long maxOffset, final Long tagsCode,
         long msgStoreTime, byte[] filterBitMap, Map<String, String> properties) {
         String key = this.buildKey(topic, queueId);
         ManyPullRequest mpr = this.pullRequestTable.get(key);
+
+        // 如果入口2已经将数据都处理完了，那么入口1也不必要重复执行
         if (mpr != null) {
             List<PullRequest> requestList = mpr.cloneListAndClear();
             if (requestList != null) {
@@ -129,6 +156,7 @@ public class PullRequestHoldService extends ServiceThread {
                     }
 
                     if (newestOffset > request.getPullFromThisOffset()) {
+                        // 消息已到达，接着验证tagHashCode
                         boolean match = request.getMessageFilter().isMatchedByConsumeQueue(tagsCode,
                             new ConsumeQueueExt.CqExtUnit(tagsCode, msgStoreTime, filterBitMap));
                         // match by bit map, need eval again when properties is not null.
@@ -137,6 +165,7 @@ public class PullRequestHoldService extends ServiceThread {
                         }
 
                         if (match) {
+                            // 验证通过，说明是需要获取的消息，触发拉取消息的逻辑
                             try {
                                 this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                     request.getRequestCommand());
@@ -148,6 +177,7 @@ public class PullRequestHoldService extends ServiceThread {
                     }
 
                     if (System.currentTimeMillis() >= (request.getSuspendTimestamp() + request.getTimeoutMillis())) {
+                        // suspend超时了，即使消息未到达队列，仍触发拉取消息的逻辑（此逻辑中应该仍旧返回PULL_NOT_FOUND）
                         try {
                             this.brokerController.getPullMessageProcessor().executeRequestWhenWakeup(request.getClientChannel(),
                                 request.getRequestCommand());
@@ -157,6 +187,7 @@ public class PullRequestHoldService extends ServiceThread {
                         continue;
                     }
 
+                    // 未处理到的request
                     replayList.add(request);
                 }
 

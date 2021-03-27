@@ -54,6 +54,8 @@ public class PullAPIWrapper {
     private final MQClientInstance mQClientFactory;
     private final String consumerGroup;
     private final boolean unitMode;
+
+    // mq:brokerId 在每次拉取消息后，会给出一个下次从哪个节点拉取数据的建议
     private ConcurrentMap<MessageQueue, AtomicLong/* brokerId */> pullFromWhichNodeTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>(32);
     private volatile boolean connectBrokerByUser = false;
@@ -67,12 +69,22 @@ public class PullAPIWrapper {
         this.unitMode = unitMode;
     }
 
+    /**
+     * 处理拉取到的消息
+     * @param mq
+     * @param pullResult
+     * @param subscriptionData
+     * @return
+     */
     public PullResult processPullResult(final MessageQueue mq, final PullResult pullResult,
         final SubscriptionData subscriptionData) {
         PullResultExt pullResultExt = (PullResultExt) pullResult;
 
+        // 更新下一次的访问brokerId
         this.updatePullFromWhichNode(mq, pullResultExt.getSuggestWhichBrokerId());
         if (PullStatus.FOUND == pullResult.getPullStatus()) {
+
+            // 对消息字节数组进行解码并tag过滤
             ByteBuffer byteBuffer = ByteBuffer.wrap(pullResultExt.getMessageBinary());
             List<MessageExt> msgList = MessageDecoder.decodes(byteBuffer);
 
@@ -81,6 +93,7 @@ public class PullAPIWrapper {
                 msgListFilterAgain = new ArrayList<MessageExt>(msgList.size());
                 for (MessageExt msg : msgList) {
                     if (msg.getTags() != null) {
+                        // tags过滤
                         if (subscriptionData.getTagsSet().contains(msg.getTags())) {
                             msgListFilterAgain.add(msg);
                         }
@@ -142,18 +155,18 @@ public class PullAPIWrapper {
 
     /**
      * 拉取消息
-     * @param mq
-     * @param subExpression
-     * @param expressionType
+     * @param mq：待拉取消息的队列
+     * @param subExpression：消息过滤表达式，过滤mq中拉取到的数据？
+     * @param expressionType：消息表达式类型，分为TAG、SQL92？这个表达式具体干啥的
      * @param subVersion
-     * @param offset
-     * @param maxNums
-     * @param sysFlag
-     * @param commitOffset
-     * @param brokerSuspendMaxTimeMillis
-     * @param timeoutMillis
-     * @param communicationMode
-     * @param pullCallback
+     * @param offset：consumeQueue消息拉取偏移量
+     * @param maxNums:本次拉取最大消息条数
+     * @param sysFlag：系统标记
+     * @param commitOffset：当前messageQueue的消费进度offsetStore,与offset区别？
+     * @param brokerSuspendMaxTimeMillis：拉去过程中允许broker挂起时间
+     * @param timeoutMillis：拉取超时时间
+     * @param communicationMode：拉取模式，默认异步
+     * @param pullCallback：拉取到消息后的回调方法
      * @return
      * @throws MQClientException
      * @throws RemotingException
@@ -174,6 +187,8 @@ public class PullAPIWrapper {
         final CommunicationMode communicationMode,
         final PullCallback pullCallback
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+
+        // 1. 根据brokerName+brokerId获取具体的某一台broker
         FindBrokerResult findBrokerResult =
             this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(),
                 this.recalculatePullFromWhichNode(mq), false);
@@ -214,10 +229,11 @@ public class PullAPIWrapper {
 
             String brokerAddr = findBrokerResult.getBrokerAddr();
             if (PullSysFlag.hasClassFilterFlag(sysFlagInner)) {
+                // 如果消息过滤是类过滤，则根据topic+brokerAddr获取在broker上注册的filterServer地址，从filterServer上拉取消息，否则从broker上拉取
                 brokerAddr = computePullFromWhichFilterServer(mq.getTopic(), brokerAddr);
             }
 
-            // 请求broker
+            // 3.请求broker
             PullResult pullResult = this.mQClientFactory.getMQClientAPIImpl().pullMessage(
                 brokerAddr,
                 requestHeader,
@@ -231,11 +247,17 @@ public class PullAPIWrapper {
         throw new MQClientException("The broker[" + mq.getBrokerName() + "] not exist", null);
     }
 
+    /**
+     * 获取brokerId
+     * @param mq
+     * @return
+     */
     public long recalculatePullFromWhichNode(final MessageQueue mq) {
         if (this.isConnectBrokerByUser()) {
             return this.defaultBrokerId;
         }
 
+        // 上一次pullResult中给的suggestWhichBrokerId
         AtomicLong suggest = this.pullFromWhichNodeTable.get(mq);
         if (suggest != null) {
             return suggest.get();
@@ -244,6 +266,13 @@ public class PullAPIWrapper {
         return MixAll.MASTER_ID;
     }
 
+    /**
+     * 根据topic+brokerAddr获取在broker上注册的filterServer地址
+     * @param topic
+     * @param brokerAddr
+     * @return
+     * @throws MQClientException
+     */
     private String computePullFromWhichFilterServer(final String topic, final String brokerAddr)
         throws MQClientException {
         ConcurrentMap<String, TopicRouteData> topicRouteTable = this.mQClientFactory.getTopicRouteTable();

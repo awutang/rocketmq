@@ -879,6 +879,7 @@ public class BrokerController {
         }
 
         if (this.pullRequestHoldService != null) {
+            // broker处理挂起的逻辑线程启动
             this.pullRequestHoldService.start();
         }
 

@@ -22,6 +22,8 @@ import org.apache.rocketmq.client.consumer.PullStatus;
 import org.apache.rocketmq.common.message.MessageExt;
 
 public class PullResultExt extends PullResult {
+
+    // 下一次拉取从哪一个broker拉取，是服务端broker给的吗？依据broker负载策略？
     private final long suggestWhichBrokerId;
     private byte[] messageBinary;
 

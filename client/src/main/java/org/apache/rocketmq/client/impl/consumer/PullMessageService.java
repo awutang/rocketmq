@@ -110,6 +110,7 @@ public class PullMessageService extends ServiceThread {
     public void run() {
         log.info(this.getServiceName() + " service started");
 
+        // 循环执行，只要当前线程不结束
         while (!this.isStopped()) {
             try {
                 // 先从pullRequestQueue获取request,再从request中获取message

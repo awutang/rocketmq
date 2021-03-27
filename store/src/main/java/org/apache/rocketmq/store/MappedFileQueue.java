@@ -339,7 +339,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * commitLog目录下所有文件所有消息的最大偏移量
+     * commitLog/topic+queueId目录下所有文件所有消息的最大偏移量
      * @return
      */
     public long getMaxOffset() {

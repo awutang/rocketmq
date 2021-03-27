@@ -26,14 +26,26 @@ import org.apache.rocketmq.common.filter.ExpressionType;
 import java.util.HashSet;
 import java.util.Set;
 
+/**
+ * 消息topic订阅 当前consumer需要消费的某主题+消息过滤
+ */
 public class SubscriptionData implements Comparable<SubscriptionData> {
     public final static String SUB_ALL = "*";
+
+    // 消息过滤机制是否为类过滤模式--类过滤模式是咋样的？
     private boolean classFilterMode = false;
     private String topic;
+
+    // subscription expression.it only support or operation such as "tag1 || tag2 || tag3" <br>
+    //     * if null or * expression,meaning subscribe all
     private String subString;
+
+    // tagsSet+codeSet都是根据tags生成的
     private Set<String> tagsSet = new HashSet<String>();
     private Set<Integer> codeSet = new HashSet<Integer>();
     private long subVersion = System.currentTimeMillis();
+
+    // 消息表达式类型，分为TAG、SQL92
     private String expressionType = ExpressionType.TAG;
 
     @JSONField(serialize = false)

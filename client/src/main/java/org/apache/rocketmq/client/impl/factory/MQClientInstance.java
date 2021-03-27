@@ -259,6 +259,8 @@ public class MQClientInstance {
                     // Start pull service 开始拉取消费消息
                     this.pullMessageService.start();
                     // Start rebalance service
+                    /**PUSH:触发PullRequest对象的构建、放置到pullRequestQueue中,myConfusion:1.但是这里哪里体现了broker主动push呢？
+                     * 难道不应该是broker调用到consumer触发吗？2.PULL呢？consumer调用DefaultMQPullConsumer.pull(MessageQueue mq, String subExpression, long offset, int maxNums)?*/
                     this.rebalanceService.start();
                     // Start push service
                     this.defaultMQProducer.getDefaultMQProducerImpl().start(false);
@@ -1082,6 +1084,13 @@ public class MQClientInstance {
         return null;
     }
 
+    /**
+     * 根据brokerName+brokerId获取具体的某一台broker
+     * @param brokerName
+     * @param brokerId
+     * @param onlyThisBroker
+     * @return
+     */
     public FindBrokerResult findBrokerAddressInSubscribe(
         final String brokerName,
         final long brokerId,

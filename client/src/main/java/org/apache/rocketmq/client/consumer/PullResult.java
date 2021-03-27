@@ -21,6 +21,8 @@ import org.apache.rocketmq.common.message.MessageExt;
 
 public class PullResult {
     private final PullStatus pullStatus;
+
+    // 下一次拉区消息时的consumeQueue中的位置
     private final long nextBeginOffset;
     private final long minOffset;
     private final long maxOffset;

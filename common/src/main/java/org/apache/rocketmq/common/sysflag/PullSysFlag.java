@@ -28,18 +28,22 @@ public class PullSysFlag {
         int flag = 0;
 
         if (commitOffset) {
+            // 表明从offSetStore中读取到的消费进度>0
             flag |= FLAG_COMMIT_OFFSET;
         }
 
         if (suspend) {
+            // 消息拉取时支持挂起
             flag |= FLAG_SUSPEND;
         }
 
         if (subscription) {
+            // 表示消息过滤机制为表达式
             flag |= FLAG_SUBSCRIPTION;
         }
 
         if (classFilter) {
+            // 表示消息过滤机制为类过滤模式
             flag |= FLAG_CLASS_FILTER;
         }
 

@@ -516,7 +516,7 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 查找pos到最大可读之间的数据
+     * 查找pos到最大可读之间的数据（一个文件中的）
      * @param pos：文件中的offset
      * @return
      */

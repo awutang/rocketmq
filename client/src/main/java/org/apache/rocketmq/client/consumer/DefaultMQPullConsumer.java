@@ -315,6 +315,20 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
         }
     }
 
+    /**
+     * PULL模式入口？myConfusion:PUSH与PULL的区别是啥？PUSH是封装了PULL的，难道PUSH是broker远程调用rebalancePushImpl触发的？
+     * @param mq from which message queue
+     * @param subExpression subscription expression.it only support or operation such as "tag1 || tag2 || tag3" <br> if
+     * null or * expression,meaning subscribe
+     * all
+     * @param offset from where to pull
+     * @param maxNums max pulling numbers
+     * @return
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     @Override
     public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums)
         throws MQClientException, RemotingException, MQBrokerException, InterruptedException {

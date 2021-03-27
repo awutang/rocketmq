@@ -129,7 +129,10 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * </li>
      * </ul>
      *
-     * 根据消息进度从消息服务器拉取不到消息时重新计算消费策略
+     * 根据消息进度从消息服务器拉取不到消息时重新计算消费策略（只有当从OffsetStore读取到的messageQueue中的偏移量小于0时
+     * 策略（eg.CONSUME_FROM_LAST_OFFSET）才生效，否则直接使用读取到的偏移量）
+     *
+     * CONSUME_FROM_LAST_OFFSET：从队列当前最大偏移量开始消费
      */
     private ConsumeFromWhere consumeFromWhere = ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET;
 
@@ -180,6 +183,8 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
 
     /**
      * Concurrently max span offset.it has no effect on sequential consumption
+     *
+     * processQueue中最大consumeQueue offset与最小offset的差值最大值
      */
     private int consumeConcurrentlyMaxSpan = 2000;
 

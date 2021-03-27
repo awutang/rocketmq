@@ -22,6 +22,7 @@ public class RequestCode {
     // 发送消息 eg.producer发送消息到broker某一队列
     public static final int SEND_MESSAGE = 10;
 
+    // consumer向broker请求拉取消息
     public static final int PULL_MESSAGE = 11;
 
     public static final int QUERY_MESSAGE = 12;

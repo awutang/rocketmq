@@ -101,6 +101,7 @@ public class MessageStoreConfig {
     private int maxTransferBytesOnMessageInMemory = 1024 * 256;
     @ImportantField
     private int maxTransferCountOnMessageInMemory = 32;
+
     @ImportantField
     private int maxTransferBytesOnMessageInDisk = 1024 * 64;
     @ImportantField

@@ -224,6 +224,8 @@ public abstract class NettyRemotingAbstract {
                             public void callback(RemotingCommand response) {
                                 doAfterRpcHooks(RemotingHelper.parseChannelRemoteAddr(ctx.channel()), cmd, response);
                                 if (!cmd.isOnewayRPC()) {
+
+                                    // 只有当response!=null时才向客户端写响应
                                     if (response != null) {
                                         response.setOpaque(opaque);
                                         response.markResponseType();
@@ -240,8 +242,10 @@ public abstract class NettyRemotingAbstract {
                             }
                         };
                         if (pair.getObject1() instanceof AsyncNettyRequestProcessor) {
+                            // 异步
                             AsyncNettyRequestProcessor processor = (AsyncNettyRequestProcessor)pair.getObject1();
                             processor.asyncProcessRequest(ctx, cmd, callback);
+
                         } else {
                             NettyRequestProcessor processor = pair.getObject1();
                             // 处理
@@ -272,6 +276,7 @@ public abstract class NettyRemotingAbstract {
 
             try {
                 final RequestTask requestTask = new RequestTask(run, ctx.channel(), cmd);
+                // 执行run.run()
                 pair.getObject2().submit(requestTask);
             } catch (RejectedExecutionException e) {
                 if ((System.currentTimeMillis() % 10000) == 0) {
@@ -515,6 +520,12 @@ public abstract class NettyRemotingAbstract {
             try {
                 // 客户端写出
                 channel.writeAndFlush(request).addListener(new ChannelFutureListener() {
+
+                    /**
+                     * 写出到channel后执行
+                     * @param f
+                     * @throws Exception
+                     */
                     @Override
                     public void operationComplete(ChannelFuture f) throws Exception {
                         if (f.isSuccess()) {
