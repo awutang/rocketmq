@@ -68,6 +68,7 @@ public class Consumer {
         final boolean msgTraceEnable = commandLine.hasOption('m') && Boolean.parseBoolean(commandLine.getOptionValue('m'));
         final boolean aclEnable = commandLine.hasOption('a') && Boolean.parseBoolean(commandLine.getOptionValue('a'));
 
+        // 消费组
         String group = groupPrefix;
         if (Boolean.parseBoolean(isSuffixEnable)) {
             group = groupPrefix + "_" + (System.currentTimeMillis() % 100);
@@ -126,6 +127,8 @@ public class Consumer {
         }, 10000, 10000);
 
         RPCHook rpcHook = aclEnable ? AclClient.getAclRPCHook() : null;
+
+        // consumer对象创建
         DefaultMQPushConsumer consumer = new DefaultMQPushConsumer(group, rpcHook, new AllocateMessageQueueAveragely(), msgTraceEnable, null);
         if (commandLine.hasOption('n')) {
             String ns = commandLine.getOptionValue('n');

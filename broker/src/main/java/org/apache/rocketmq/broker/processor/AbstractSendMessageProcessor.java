@@ -204,6 +204,11 @@ public abstract class AbstractSendMessageProcessor extends AsyncNettyRequestProc
             }
 
             log.warn("the topic {} not exist, producer: {}", requestHeader.getTopic(), ctx.channel().remoteAddress());
+
+            // broker端新增topic配置，这个topic是producer发送过来的消息所属的。
+            /**producer发送消息之前查询路由信息时有可能nameServer没有这个topic的路由信息因此采用默认主题的路由信息，在消息发送到broker后，
+             * broker会将这个topic新增到TopicConfigManager.topicConfigTable()中，当broker定时向nameServer发送心跳包时，会获取topicConfigTable
+             * 中的数据，从而在nameServer新增该topic的路由信息。*/
             topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageMethod(
                 requestHeader.getTopic(),
                 requestHeader.getDefaultTopic(),

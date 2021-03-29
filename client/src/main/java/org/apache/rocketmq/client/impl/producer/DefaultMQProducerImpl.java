@@ -413,6 +413,11 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         this.checkExecutor.submit(request);
     }
 
+    /**
+     * 更新路由信息
+     * @param topic
+     * @param info
+     */
     @Override
     public void updateTopicPublishInfo(final String topic, final TopicPublishInfo info) {
         if (info != null && topic != null) {
@@ -595,7 +600,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         // 1.2 消息验证
         Validators.checkMessage(msg, this.defaultMQProducer);
 
-        // 2. 查找topicL路由信息，从而确定将消息发送到哪一台broker--myConfusionsv:还会继续确认发送到哪一个broker的队列吗？--会，挑选队列采用取余方式进行，可以实现均衡
+        // 2. 查找topicL路由信息，从而确定将消息发送到哪一台broker--myConfusionsv:还会进一步确认发送到broker的哪一个队列吗？--会，
+        // 挑选队列采用取余方式进行，可以实现均衡--myConfusion:这里的均衡指的是同一个producer发多条消息时可以均衡落在不同队列上，但是不同的机器，
+        // 不同的producer如何实现对队列的均衡负载？通过nginx控制请求实现吗？
         final long invokeID = random.nextLong();
         long beginTimestampFirst = System.currentTimeMillis();
         long beginTimestampPrev = beginTimestampFirst;

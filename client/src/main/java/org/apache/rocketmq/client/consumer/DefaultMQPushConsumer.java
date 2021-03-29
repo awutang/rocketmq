@@ -76,6 +76,8 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * </p>
      *
      * See <a href="http://rocketmq.apache.org/docs/core-concept/">here</a> for further discussion.
+     * consumer instances of a consumer group must have exactly the same topic subscription(s).
+     * consumers of the exactly same role are grouped together and named Consumer Group.
      */
     private String consumerGroup;
 

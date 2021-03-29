@@ -50,6 +50,7 @@ public class RequestCode {
 
     public static final int VIEW_MESSAGE_BY_ID = 33;
 
+    // consumer向broker心跳检测
     public static final int HEART_BEAT = 34;
 
     public static final int UNREGISTER_CLIENT = 35;
@@ -57,6 +58,8 @@ public class RequestCode {
     public static final int CONSUMER_SEND_MSG_BACK = 36;
 
     public static final int END_TRANSACTION = 37;
+
+    // consumer向broker获取消费组内的所有cid
     public static final int GET_CONSUMER_LIST_BY_GROUP = 38;
 
     public static final int CHECK_TRANSACTION_STATE = 39;
@@ -70,6 +73,7 @@ public class RequestCode {
 
     public static final int GET_ALL_DELAY_OFFSET = 45;
 
+    // consumer向broker 检查配置
     public static final int CHECK_CLIENT_CONFIG = 46;
 
     public static final int UPDATE_AND_CREATE_ACL_CONFIG = 50;
@@ -92,6 +96,8 @@ public class RequestCode {
     public static final int REGISTER_BROKER = 103;
 
     public static final int UNREGISTER_BROKER = 104;
+
+    // producer根据topic向nameServer获取路由信息
     public static final int GET_ROUTEINFO_BY_TOPIC = 105;
 
     public static final int GET_BROKER_CLUSTER_INFO = 106;

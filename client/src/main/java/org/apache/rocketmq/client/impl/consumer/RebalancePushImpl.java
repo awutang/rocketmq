@@ -81,12 +81,21 @@ public class RebalancePushImpl extends RebalanceImpl {
         this.getmQClientFactory().sendHeartbeatToAllBrokerWithLock();
     }
 
+    /**
+     * 判断是否要从processQueueTable中删除messageQueue,持久化待移出的消费进度
+     * @param mq
+     * @param pq
+     * @return
+     */
     @Override
     public boolean removeUnnecessaryMessageQueue(MessageQueue mq, ProcessQueue pq) {
+        // 持久化
         this.defaultMQPushConsumerImpl.getOffsetStore().persist(mq);
+        // 移出
         this.defaultMQPushConsumerImpl.getOffsetStore().removeOffset(mq);
         if (this.defaultMQPushConsumerImpl.isConsumeOrderly()
             && MessageModel.CLUSTERING.equals(this.defaultMQPushConsumerImpl.messageModel())) {
+            // 若是集群且顺序消费，还需要先解锁队列
             try {
                 if (pq.getLockConsume().tryLock(1000, TimeUnit.MILLISECONDS)) {
                     try {
@@ -132,6 +141,10 @@ public class RebalancePushImpl extends RebalanceImpl {
         return ConsumeType.CONSUME_PASSIVELY;
     }
 
+    /**
+     * 移除mq的消费进度（内存中的）
+     * @param mq
+     */
     @Override
     public void removeDirtyOffset(final MessageQueue mq) {
         this.defaultMQPushConsumerImpl.getOffsetStore().removeOffset(mq);
@@ -152,6 +165,8 @@ public class RebalancePushImpl extends RebalanceImpl {
             case CONSUME_FROM_MIN_OFFSET:
             case CONSUME_FROM_MAX_OFFSET:
             case CONSUME_FROM_LAST_OFFSET: {
+
+                // 小于0时才采用不同的consumeFromWhere策略
                 // 从队列当前最大偏移量开始消费
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {

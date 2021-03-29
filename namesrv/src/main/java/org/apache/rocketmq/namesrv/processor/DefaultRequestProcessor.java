@@ -311,6 +311,7 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
 
         TopicConfigSerializeWrapper topicConfigWrapper;
         if (request.getBody() != null) {
+            // broker端的topicConfigTable,BrokerConfig.autoCreateTopicEnable==true时，broker端的topicConfigTable包括了默认主题TBW102
             topicConfigWrapper = TopicConfigSerializeWrapper.decode(request.getBody(), TopicConfigSerializeWrapper.class);
         } else {
             topicConfigWrapper = new TopicConfigSerializeWrapper();

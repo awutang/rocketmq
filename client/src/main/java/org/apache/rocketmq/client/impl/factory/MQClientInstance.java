@@ -450,6 +450,10 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * consumer向broker检查配置
+     * @throws MQClientException
+     */
     public void checkClientInBroker() throws MQClientException {
         Iterator<Entry<String, MQConsumerInner>> it = this.consumerTable.entrySet().iterator();
 
@@ -470,6 +474,7 @@ public class MQClientInstance {
 
                 if (addr != null) {
                     try {
+                        //
                         this.getMQClientAPIImpl().checkClientInBroker(
                             addr, entry.getKey(), this.clientId, subscriptionData, 3 * 1000
                         );
@@ -641,7 +646,7 @@ public class MQClientInstance {
                 try {
                     TopicRouteData topicRouteData;
                     if (isDefault && defaultMQProducer != null) {
-                        // 使用默认topic查询路由信息
+                        // 使用默认topic(TBW102)查询路由信息
                         topicRouteData = this.mQClientAPIImpl.getDefaultTopicRouteInfoFromNameServer(defaultMQProducer.getCreateTopicKey(),
                             1000 * 3);
                         if (topicRouteData != null) {
@@ -652,7 +657,9 @@ public class MQClientInstance {
                             }
                         }
                     } else {
-                        // 从nameServer获取某一topic路由信息
+                        // 从nameServer获取某一topic路由信息，
+                        // myConfusion:如果不能采用默认topic获取的话，broker向nameServer没有注册该topic咋办？那岂不是一直拿不到路由信息？
+                        //  --broker注册的topic貌似还有来自于文件的，难道是可以在配置文件中先指定topic?
                         topicRouteData = this.mQClientAPIImpl.getTopicRouteInfoFromNameServer(topic, 1000 * 3);
                     }
                     if (topicRouteData != null) {
@@ -697,6 +704,7 @@ public class MQClientInstance {
                                     Entry<String, MQConsumerInner> entry = it.next();
                                     MQConsumerInner impl = entry.getValue();
                                     if (impl != null) {
+                                        // 更新consumer的topic路由信息
                                         impl.updateTopicSubscribeInfo(topic, subscribeInfo);
                                     }
                                 }
@@ -728,6 +736,10 @@ public class MQClientInstance {
         return false;
     }
 
+    /**
+     * 心跳包
+     * @return
+     */
     private HeartbeatData prepareHeartbeatData() {
         HeartbeatData heartbeatData = new HeartbeatData();
 
@@ -912,7 +924,8 @@ public class MQClientInstance {
             return false;
         }
 
-        // 一个组的不同consumer在map中难道不会覆盖吗？
+        // myConfusionsv:一个组的不同consumer在map中难道不会覆盖吗？--当前consumer启动时触发到这里，因为当前只会有一个consumer，但如果
+        //  另一个consumer也在同一个进程上，那岂不是覆盖了？难道是一个进程上只开一个consumer吗？--是的，且还用clientId标志一个consumer
         MQConsumerInner prev = this.consumerTable.putIfAbsent(group, consumer);
         if (prev != null) {
             log.warn("the consumer group[" + group + "] exist already.");
@@ -1019,6 +1032,17 @@ public class MQClientInstance {
         this.rebalanceService.wakeup();
     }
 
+    /**
+     * 重新分布 其实就是当有新的消费者时，一个消费组内的多个消费者是如何负载某一topic下的消息队列（在broker下）的
+     *
+     * 消费组内的消费者与topic的多个mq之间的分配关系
+     *
+     * myConfusionsv:当有多台机器时，多个进程，多个consumer 是如何感知其他consumer的负载的？只有感知到其他consumer的负载，才能做到均衡负载
+     * --cidAll包括了其他进程上的consumerId,当分配时考虑到了其他consumer(比如AllocateMessageQueueAveragely)
+     *
+     * // 消费组内所有consumer所在进程clientId(因为每个consumer都会定时向broker发起心跳检测，心跳包中包括了client和consumerGroup信息)
+     *                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
+     */
     public void doRebalance() {
         for (Map.Entry<String, MQConsumerInner> entry : this.consumerTable.entrySet()) {
             MQConsumerInner impl = entry.getValue();
@@ -1136,6 +1160,12 @@ public class MQClientInstance {
         return 0;
     }
 
+    /**
+     * 向broker获取consumerId
+     * @param topic
+     * @param group
+     * @return
+     */
     public List<String> findConsumerIdList(final String topic, final String group) {
         String brokerAddr = this.findBrokerAddrByTopic(topic);
         if (null == brokerAddr) {

@@ -32,12 +32,16 @@ public class RebalanceService extends ServiceThread {
         this.mqClientFactory = mqClientFactory;
     }
 
+    /**
+     * 一台机器上的一个应用上，即使有多个consumer,也只会有一个mqClientInstance对象，因此此run()只会被触发一次
+     */
     @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
 
         while (!this.isStopped()) {
             this.waitForRunning(waitInterval);
+            //
             this.mqClientFactory.doRebalance();
         }
 

@@ -45,6 +45,8 @@ import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
  */
 public abstract class RebalanceImpl {
     protected static final InternalLogger log = ClientLogger.getLog();
+
+    // 当前消费者负载的消息队列缓存表 待拉取队列：本地消息数据
     protected final ConcurrentMap<MessageQueue, ProcessQueue> processQueueTable = new ConcurrentHashMap<MessageQueue, ProcessQueue>(64);
     protected final ConcurrentMap<String/* topic */, Set<MessageQueue>> topicSubscribeInfoTable =
         new ConcurrentHashMap<String, Set<MessageQueue>>();
@@ -217,8 +219,10 @@ public abstract class RebalanceImpl {
     }
 
     public void doRebalance(final boolean isOrder) {
+        // 当前consumer的订阅信息
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
         if (subTable != null) {
+            // 循环对每一个topic
             for (final Map.Entry<String, SubscriptionData> entry : subTable.entrySet()) {
                 final String topic = entry.getKey();
                 try {
@@ -238,6 +242,11 @@ public abstract class RebalanceImpl {
         return subscriptionInner;
     }
 
+    /**
+     * 消息队列负载
+     * @param topic
+     * @param isOrder
+     */
     private void rebalanceByTopic(final String topic, final boolean isOrder) {
         switch (messageModel) {
             case BROADCASTING: {
@@ -258,8 +267,13 @@ public abstract class RebalanceImpl {
                 break;
             }
             case CLUSTERING: {
+
+                // 路由信息是consumer启动时从nameServer获取的 topic路由信息
                 Set<MessageQueue> mqSet = this.topicSubscribeInfoTable.get(topic);
+                // 消费组内所有consumer所在进程clientId(因为每个consumer都会定时向broker发起心跳检测，心跳包中包括了client和consumerGroup信息)
                 List<String> cidAll = this.mQClientFactory.findConsumerIdList(topic, consumerGroup);
+
+                // 如果mqSet和cidAll任一个为空，则本次队列负载忽略
                 if (null == mqSet) {
                     if (!topic.startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX)) {
                         log.warn("doRebalance, {}, but the topic[{}] not exist.", consumerGroup, topic);
@@ -274,6 +288,7 @@ public abstract class RebalanceImpl {
                     List<MessageQueue> mqAll = new ArrayList<MessageQueue>();
                     mqAll.addAll(mqSet);
 
+                    // 排序很重要，保证其他进程上的consumer得到的mqAll、cidAll一致，才能让队列分配正确
                     Collections.sort(mqAll);
                     Collections.sort(cidAll);
 
@@ -282,7 +297,8 @@ public abstract class RebalanceImpl {
 
                     List<MessageQueue> allocateResult = null;
                     try {
-                        // Allocating by consumer id 分配给当前consumer能消费到的mqSet(某一topic之下的)
+                        // Allocating by consumer id
+                        // 分配给当前consumer（一个消费组之下的）能消费到的mqSet(某一topic之下的)，一般用AllocateMessageQueueAveragely、AllocateMessageQueueAveragelyByCircle
                         allocateResult = strategy.allocate(
                             this.consumerGroup,
                             this.mQClientFactory.getClientId(),
@@ -299,6 +315,7 @@ public abstract class RebalanceImpl {
                         allocateResultSet.addAll(allocateResult);
                     }
 
+                    // 对比当前consumer现在分配的消费队列与之前是否不同，有不同的则更新
                     boolean changed = this.updateProcessQueueTableInRebalance(topic, allocateResultSet, isOrder);
                     if (changed) {
                         log.info(
@@ -331,7 +348,7 @@ public abstract class RebalanceImpl {
     }
 
     /**
-     * 消息队列负载
+     * 消息队列负载 对比当前consumer现在分配的消费队列与之前是否不同，有不同的则更新
      * @param topic
      * @param mqSet
      * @param isOrder
@@ -348,9 +365,13 @@ public abstract class RebalanceImpl {
             ProcessQueue pq = next.getValue();
 
             if (mq.getTopic().equals(topic)) {
+                // 如果之前的负载队列不在此次新分配的队列中，则需要停止该队列且保存消费进度
                 if (!mqSet.contains(mq)) {
+                    // 暂停消费，processQueue中的数据不再被消费--那之后还会恢复吗？因为还有已经拉取到consumer的消息
                     pq.setDropped(true);
+                    // 持久化消费进度
                     if (this.removeUnnecessaryMessageQueue(mq, pq)) {
+                        // 从processQueueTable中删除mq:processQueue
                         it.remove();
                         changed = true;
                         log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
@@ -375,6 +396,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // 若本次新分配了队列，则创建pullReguest发起拉取
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         for (MessageQueue mq : mqSet) {
             // 循环构造pullRequest对象，根据mq
@@ -384,8 +406,10 @@ public abstract class RebalanceImpl {
                     continue;
                 }
 
+                // 从内存中移除消费进度
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
+                // 获取上次持久化的消费进度
                 long nextOffset = this.computePullFromWhere(mq);
                 if (nextOffset >= 0) {
                     ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);
@@ -393,9 +417,11 @@ public abstract class RebalanceImpl {
                         log.info("doRebalance, {}, mq already exists, {}", consumerGroup, mq);
                     } else {
                         log.info("doRebalance, {}, add a new mq, {}", consumerGroup, mq);
-                        // 构造pullRequest对象
+                        // 构造pullRequest对象 一个jvm进程中，同一个消费组同一个队列只存在一个pullRequest对象（同一个消费组同一个队列只会被一个消费者负载）
                         PullRequest pullRequest = new PullRequest();
                         pullRequest.setConsumerGroup(consumerGroup);
+
+                        // 这个消费进度在消息拉取成功后会加入到offsetTable中，对应上文中的this.removeDirtyOffset(mq);
                         pullRequest.setNextOffset(nextOffset);
                         pullRequest.setMessageQueue(mq);
                         pullRequest.setProcessQueue(pq);
@@ -408,6 +434,7 @@ public abstract class RebalanceImpl {
             }
         }
 
+        // 发起拉取消息流程
         this.dispatchPullRequest(pullRequestList);
 
         return changed;

@@ -102,6 +102,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     private final ArrayList<ConsumeMessageHook> consumeMessageHookList = new ArrayList<ConsumeMessageHook>();
     private final RPCHook rpcHook;
     private volatile ServiceState serviceState = ServiceState.CREATE_JUST;
+
+
     private MQClientInstance mQClientFactory;
     private PullAPIWrapper pullAPIWrapper;
 
@@ -632,6 +634,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 }
 
                 // 2. 构建各个对象
+
+                // 同一个进程下的MQClientInstance对象是同一个，因此如果是同一应用即使consumer有多个，但MQClientInstance对象只有一个
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQPushConsumer, this.rpcHook);
 
                 // 消费组
@@ -704,7 +708,10 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 break;
         }
 
+        // 更新consumer的topic路由信息
         this.updateTopicSubscribeInfoWhenSubscriptionChanged();
+
+        // consumer向broker发送心跳包
         this.mQClientFactory.checkClientInBroker();
         this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
         this.mQClientFactory.rebalanceImmediately();
@@ -929,10 +936,14 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         return messageListenerInner;
     }
 
+    /**
+     * 更新consumer的topic路由信息
+     */
     private void updateTopicSubscribeInfoWhenSubscriptionChanged() {
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();
         if (subTable != null) {
             for (final Map.Entry<String, SubscriptionData> entry : subTable.entrySet()) {
+                // 循环获取topic的路由信息
                 final String topic = entry.getKey();
                 this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             }
@@ -1095,6 +1106,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 更新consumer的topic路由信息
+     * @param topic
+     * @param info
+     */
     @Override
     public void updateTopicSubscribeInfo(String topic, Set<MessageQueue> info) {
         Map<String, SubscriptionData> subTable = this.getSubscriptionInner();

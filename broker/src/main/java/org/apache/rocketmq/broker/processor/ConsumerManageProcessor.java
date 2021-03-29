@@ -83,6 +83,8 @@ public class ConsumerManageProcessor extends AsyncNettyRequestProcessor implemen
             List<String> clientIds = consumerGroupInfo.getAllClientId();
             if (!clientIds.isEmpty()) {
                 GetConsumerListByGroupResponseBody body = new GetConsumerListByGroupResponseBody();
+
+                // clientIds来源于consumer向broker发心跳包时带的consumer所在进程的id
                 body.setConsumerIdList(clientIds);
                 response.setBody(body.encode());
                 response.setCode(ResponseCode.SUCCESS);

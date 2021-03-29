@@ -43,6 +43,8 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     private final static InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mQClientFactory;
     private final String groupName;
+
+    // mq:消费进度
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>();
 
@@ -55,6 +57,12 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     public void load() {
     }
 
+    /**
+     * 新增或更新mq:消费进度
+     * @param mq
+     * @param offset
+     * @param increaseOnly
+     */
     @Override
     public void updateOffset(MessageQueue mq, long offset, boolean increaseOnly) {
         if (mq != null) {
@@ -73,6 +81,12 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
         }
     }
 
+    /**
+     * 获取消费进度，从内存或持久化（上次mq从负载中删除时将消费进度持久化到了broker(remote情况下)）中
+     * @param mq
+     * @param type
+     * @return
+     */
     @Override
     public long readOffset(final MessageQueue mq, final ReadOffsetType type) {
         if (mq != null) {
@@ -95,6 +109,7 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
                     }
                     // No offset in broker
                     catch (MQBrokerException e) {
+                        // 表明队列刚建立
                         return -1;
                     }
                     //Other exceptions

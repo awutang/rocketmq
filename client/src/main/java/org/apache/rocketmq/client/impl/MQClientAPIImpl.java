@@ -944,6 +944,18 @@ public class MQClientAPIImpl {
         throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
     }
 
+    /**
+     * 根据broker上消息的存储时间戳返回消息的偏移量
+     * @param addr
+     * @param topic
+     * @param queueId
+     * @param timestamp
+     * @param timeoutMillis
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public long searchOffset(final String addr, final String topic, final int queueId, final long timestamp,
         final long timeoutMillis)
         throws RemotingException, MQBrokerException, InterruptedException {
@@ -1125,6 +1137,16 @@ public class MQClientAPIImpl {
         this.remotingClient.invokeOneway(MixAll.brokerVIPChannel(this.clientConfig.isVipChannelEnabled(), addr), request, timeoutMillis);
     }
 
+    /**
+     * consumer向broker心跳检测
+     * @param addr
+     * @param heartbeatData
+     * @param timeoutMillis
+     * @return
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public int sendHearbeat(
         final String addr,
         final HeartbeatData heartbeatData,
@@ -1496,6 +1518,8 @@ public class MQClientAPIImpl {
     public TopicRouteData getTopicRouteInfoFromNameServer(final String topic, final long timeoutMillis,
         boolean allowTopicNotExist) throws MQClientException, InterruptedException, RemotingTimeoutException, RemotingSendRequestException, RemotingConnectException {
         GetRouteInfoRequestHeader requestHeader = new GetRouteInfoRequestHeader();
+
+        // TBW102
         requestHeader.setTopic(topic);
 
         RemotingCommand request = RemotingCommand.createRequestCommand(RequestCode.GET_ROUTEINFO_BY_TOPIC, requestHeader);
@@ -2358,6 +2382,19 @@ public class MQClientAPIImpl {
         throw new MQClientException(response.getCode(), response.getRemark());
     }
 
+    /**
+     * onsumer向broker检查配置
+     * @param brokerAddr
+     * @param consumerGroup
+     * @param clientId
+     * @param subscriptionData
+     * @param timeoutMillis
+     * @throws InterruptedException
+     * @throws RemotingTimeoutException
+     * @throws RemotingSendRequestException
+     * @throws RemotingConnectException
+     * @throws MQClientException
+     */
     public void checkClientInBroker(final String brokerAddr, final String consumerGroup,
         final String clientId, final SubscriptionData subscriptionData,
         final long timeoutMillis)
@@ -2367,6 +2404,7 @@ public class MQClientAPIImpl {
 
         CheckClientRequestBody requestBody = new CheckClientRequestBody();
         requestBody.setClientId(clientId);
+        // 心跳包包括consumer信息
         requestBody.setGroup(consumerGroup);
         requestBody.setSubscriptionData(subscriptionData);
 
