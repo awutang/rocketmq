@@ -632,7 +632,7 @@ public class CommitLog {
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE
                 || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
 
-            // 如果消息的延迟级别>0,则代表是定时消息
+            // 如果消息的延迟级别>0,则代表是定时消息、重试消费的消息
             /**
              * ## 8 定时消息
              * 定时消息（延迟队列）是指消息发送到broker后，不会立即被消费，等待特定时间投递给真正的topic。

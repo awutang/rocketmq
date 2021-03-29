@@ -37,6 +37,8 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 
 /**
  * Local storage implementation
+ *
+ * 应用在广播模式下，因为此模式下所有消费者都要消费同一条消息，因此消费进度是独立的，存在本地即可
  */
 public class LocalFileOffsetStore implements OffsetStore {
     public final static String LOCAL_OFFSET_STORE_DIR = System.getProperty(
@@ -46,6 +48,8 @@ public class LocalFileOffsetStore implements OffsetStore {
     private final MQClientInstance mQClientFactory;
     private final String groupName;
     private final String storePath;
+
+    // mq:mq消费进度
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>();
 
@@ -128,6 +132,10 @@ public class LocalFileOffsetStore implements OffsetStore {
         return -1;
     }
 
+    /**
+     * offsetTable中的消费进度序列化到磁盘
+     * @param mqs
+     */
     @Override
     public void persistAll(Set<MessageQueue> mqs) {
         if (null == mqs || mqs.isEmpty())

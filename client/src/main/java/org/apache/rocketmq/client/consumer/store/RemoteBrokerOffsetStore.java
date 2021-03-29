@@ -38,13 +38,15 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 
 /**
  * Remote storage implementation
+ *
+ * 应用在集群模式下，因为此模式下同一消费组内的消费者共享某一topic的消息(某一消息只能被一个consumer消费)，因此消费进度是互相关联的，需要存储在一个公共地方，broker
  */
 public class RemoteBrokerOffsetStore implements OffsetStore {
     private final static InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mQClientFactory;
     private final String groupName;
 
-    // mq:消费进度
+    // mq:mq消费进度
     private ConcurrentMap<MessageQueue, AtomicLong> offsetTable =
         new ConcurrentHashMap<MessageQueue, AtomicLong>();
 
@@ -58,7 +60,7 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
     }
 
     /**
-     * 新增或更新mq:消费进度
+     * 新增或更新mq:消费进度 更新到内存中
      * @param mq
      * @param offset
      * @param increaseOnly
@@ -126,6 +128,10 @@ public class RemoteBrokerOffsetStore implements OffsetStore {
         return -1;
     }
 
+    /**
+     * 持久化到broker，consumer每10s执行一次
+     * @param mqs
+     */
     @Override
     public void persistAll(Set<MessageQueue> mqs) {
         if (null == mqs || mqs.isEmpty())

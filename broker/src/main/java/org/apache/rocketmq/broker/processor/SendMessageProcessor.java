@@ -94,7 +94,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
         final SendMessageContext mqtraceContext;
         switch (request.getCode()) {
             case RequestCode.CONSUMER_SEND_MSG_BACK:
-                // 消息消费之后
+                // ACK
                 return this.asyncConsumerSendMsgBack(ctx, request);
             default:
                 // 封装send message header
@@ -120,7 +120,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     }
 
     /**
-     * 消息消费之后
+     * 消息消费之后 消费者的ACK
      * @param ctx
      * @param request
      * @return
@@ -136,6 +136,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             ConsumeMessageContext context = buildConsumeMessageContext(namespace, requestHeader, request);
             this.executeConsumeMessageHookAfter(context);
         }
+
+        // 1. 消费组订阅配置信息
         SubscriptionGroupConfig subscriptionGroupConfig =
             this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(requestHeader.getGroup());
         if (null == subscriptionGroupConfig) {
@@ -150,20 +152,21 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return CompletableFuture.completedFuture(response);
         }
 
+        // 如果重试队列数目小于1，则说明该消费组不支持重新消费
         if (subscriptionGroupConfig.getRetryQueueNums() <= 0) {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
             return CompletableFuture.completedFuture(response);
         }
 
+        // 2. 重试topic
         String newTopic = MixAll.getRetryTopic(requestHeader.getGroup());
         int queueIdInt = Math.abs(this.random.nextInt() % 99999999) % subscriptionGroupConfig.getRetryQueueNums();
         int topicSysFlag = 0;
         if (requestHeader.isUnitMode()) {
             topicSysFlag = TopicSysFlag.buildSysFlag(false, true);
         }
-
-        //
+        // 创建重试topic的配置信息
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
             newTopic,
             subscriptionGroupConfig.getRetryQueueNums(),
@@ -179,6 +182,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             response.setRemark(String.format("the topic[%s] sending message is forbidden", newTopic));
             return CompletableFuture.completedFuture(response);
         }
+
+        // 3. 根据commitLogOffset从commitLog中获取消息
         MessageExt msgExt = this.brokerController.getMessageStore().lookMessageByOffset(requestHeader.getOffset());
         if (null == msgExt) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -186,6 +191,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             return CompletableFuture.completedFuture(response);
         }
 
+        // 将消息原topic存入property
         final String retryTopic = msgExt.getProperty(MessageConst.PROPERTY_RETRY_TOPIC);
         if (null == retryTopic) {
             MessageAccessor.putProperty(msgExt, MessageConst.PROPERTY_RETRY_TOPIC, msgExt.getTopic());
@@ -201,6 +207,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         if (msgExt.getReconsumeTimes() >= maxReconsumeTimes 
             || delayLevel < 0) {
+            // 4. 判断如果该消息重试次数已经超过配置，则改变topic为DLQ（该主题的权限只写，说明不再被消费了）
             newTopic = MixAll.getDLQTopic(requestHeader.getGroup());
             queueIdInt = Math.abs(this.random.nextInt() % 99999999) % DLQ_NUMS_PER_GROUP;
 
@@ -219,7 +226,9 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             msgExt.setDelayTimeLevel(delayLevel);
         }
 
+        // 5.新建一个消费对象，专门用于充实消费的，该消息msgId重新生成，原topic与msgId都存到property中
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
+        // 重试topic设置到
         msgInner.setTopic(newTopic);
         msgInner.setBody(msgExt.getBody());
         msgInner.setFlag(msgExt.getFlag());
@@ -236,6 +245,8 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
 
         String originMsgId = MessageAccessor.getOriginMessageId(msgExt);
         MessageAccessor.setOriginMessageId(msgInner, UtilAll.isBlank(originMsgId) ? msgExt.getMsgId() : originMsgId);
+
+        // 6. 该消息存入commitLog
         CompletableFuture<PutMessageResult> putMessageResult = this.brokerController.getMessageStore().asyncPutMessage(msgInner);
         return putMessageResult.thenApply((r) -> {
             if (r != null) {
