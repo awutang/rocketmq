@@ -312,7 +312,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                     MessageExt msg = consumeRequest.getMsgs().get(i);
 
                     // ACK 消费失败，告知服务器稍后再投递这条消息，继续消费其他消息?
-                    // --其实是新生成了一条延时消息并存到commitLog,依托于broker的定时机制，当延时到期后，consumer将再次拉取消息并进行消费--myConfusion:broker如何触发consumer拉取的？
+                    // --其实是新生成了一条延时消息并存到commitLog,依托于broker的定时机制，当延时到期后，consumer将再次拉取消息并进行消费
+                    // --myConfusionsv:broker如何触发consumer拉取的？-- 延迟消息转成非延时的消息存到commitLog,之后就可以供consumer过来拉取了，其实ACK就是重试消费
                     boolean result = this.sendMessageBack(msg, context);
                     if (!result) {
                         // 若ACK发送失败，则重新消费
@@ -350,7 +351,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
         // Wrap topic with namespace before sending back message.
         msg.setTopic(this.defaultMQPushConsumer.withNamespace(msg.getTopic()));
         try {
-            // 消息消费之后
+            // ACK
             this.defaultMQPushConsumerImpl.sendMessageBack(msg, delayLevel, context.getMessageQueue().getBrokerName());
             return true;
         } catch (Exception e) {

@@ -258,7 +258,7 @@ public class BrokerController {
             }
         }
 
-        // 加载commitLog consumeQueue indexFile到内存
+        // 加载commitLog consumeQueue indexFile到内存、定时消费
         result = result && this.messageStore.load();
 
         if (result) {

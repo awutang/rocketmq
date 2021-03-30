@@ -226,7 +226,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
             msgExt.setDelayTimeLevel(delayLevel);
         }
 
-        // 5.新建一个消费对象，专门用于充实消费的，该消息msgId重新生成，原topic与msgId都存到property中
+        // 5.新建一个消费对象，专门用于重试消费的，该消息msgId重新生成，原topic与msgId都存到property中
         MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
         // 重试topic设置到
         msgInner.setTopic(newTopic);

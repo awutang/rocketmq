@@ -210,7 +210,7 @@ public class DefaultMessageStore implements MessageStore {
             boolean lastExitOK = !this.isTempFileExist();
             log.info("last shutdown {}", lastExitOK ? "normally" : "abnormally");
 
-            // 2. 延时队列，与定时消息相关
+            // 2. 延时队列，与定时消息消费相关
             if (null != scheduleMessageService) {
                 result = result && this.scheduleMessageService.load();
             }
@@ -312,6 +312,8 @@ public class DefaultMessageStore implements MessageStore {
 
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
             this.haService.start();
+
+            // 定时消费消息
             this.handleScheduleMessageService(messageStoreConfig.getBrokerRole());
         }
 

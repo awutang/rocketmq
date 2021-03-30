@@ -26,6 +26,10 @@ public abstract class ConfigManager {
 
     public abstract String encode();
 
+    /**
+     * 加载文件并解码，比如加载延时消费队列消息进度，路径为/Users/ayutang/rocketmq/store/config/delayOffset.json
+     * @return
+     */
     public boolean load() {
         String fileName = null;
         try {
@@ -67,6 +71,9 @@ public abstract class ConfigManager {
 
     public abstract void decode(final String jsonString);
 
+    /**
+     * 将消费进度持久化到文件
+     */
     public synchronized void persist() {
         String jsonString = this.encode(true);
         if (jsonString != null) {
