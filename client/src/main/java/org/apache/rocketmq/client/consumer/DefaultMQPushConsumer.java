@@ -798,6 +798,8 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      */
     @Override
     public void subscribe(final String topic, final MessageSelector messageSelector) throws MQClientException {
+
+        //
         this.defaultMQPushConsumerImpl.subscribe(withNamespace(topic), messageSelector);
     }
 

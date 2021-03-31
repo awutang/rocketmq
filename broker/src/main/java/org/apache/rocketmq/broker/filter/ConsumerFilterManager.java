@@ -70,6 +70,7 @@ public class ConsumerFilterManager extends ConfigManager {
     }
 
     /**
+     * 构建SQL2过滤实体
      * Build consumer filter data.Be care, bloom filter data is not included.
      *
      * @return maybe null
@@ -90,6 +91,7 @@ public class ConsumerFilterManager extends ConfigManager {
         consumerFilterData.setExpressionType(type);
         consumerFilterData.setClientVersion(clientVersion);
         try {
+            // sql表达式
             consumerFilterData.setCompiledExpression(
                 FilterFactory.INSTANCE.get(type).compile(expression)
             );

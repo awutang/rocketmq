@@ -47,7 +47,7 @@ public class PullMessageRequestHeader implements CommandCustomHeader {
     @CFNotNull
     private Long subVersion;
 
-    // 消息表达式类型，分为TAG、SQL92？这个表达式具体干啥的
+    // 消息表达式类型，分为TAG、SQL92？这个表达式具体干啥的--在消息拉取服务端过滤消息
     private String expressionType;
 
     @Override

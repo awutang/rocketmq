@@ -133,6 +133,8 @@ public class MessageDecoder {
 
         if (propertiesLength > 0) {
             byte[] properties = new byte[propertiesLength];
+
+            // byteBuffer此时可读位置的数据是properties，来自于producer发送消息中的properties
             byteBuffer.get(properties);
             String propertiesString = new String(properties, CHARSET_UTF8);
             Map<String, String> map = string2messageProperties(propertiesString);

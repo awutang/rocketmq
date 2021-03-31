@@ -722,6 +722,7 @@ public class DefaultMessageStore implements MessageStore {
                                 }
                             }
 
+                            // A：过滤，根据consumeQueue item中的tagHashCode过滤
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByConsumeQueue(isTagsCodeLegal ? tagsCode : null, extRet ? cqExtUnit : null)) {
                                 if (getResult.getBufferTotalSize() == 0) {
@@ -744,7 +745,8 @@ public class DefaultMessageStore implements MessageStore {
                                 continue;
                             }
 
-                            // 是否匹配filter
+                            // B:是否匹配filter 根据commitLog中消息属性？包括tag属性吗？进行过滤
+                            // 结合
                             if (messageFilter != null
                                 && !messageFilter.isMatchedByCommitLog(selectResult.getByteBuffer().slice(), null)) {
                                 if (getResult.getBufferTotalSize() == 0) {

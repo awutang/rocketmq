@@ -57,6 +57,12 @@ public class ExpressionMessageFilter implements MessageFilter {
         }
     }
 
+    /**
+     * 根据consumeQueue item中的tagHashCode过滤
+     * @param tagsCode tagsCode
+     * @param cqExtUnit extend unit of consume queue
+     * @return
+     */
     @Override
     public boolean isMatchedByConsumeQueue(Long tagsCode, ConsumeQueueExt.CqExtUnit cqExtUnit) {
         if (null == subscriptionData) {
@@ -78,6 +84,7 @@ public class ExpressionMessageFilter implements MessageFilter {
                 return true;
             }
 
+            // tag hashCode过滤
             return subscriptionData.getCodeSet().contains(tagsCode.intValue());
         } else {
             // no expression or no bloom
@@ -114,6 +121,12 @@ public class ExpressionMessageFilter implements MessageFilter {
         return true;
     }
 
+    /**
+     * 根据commitLog中消息属性进行过滤 不支持重试主题
+     * @param msgBuffer message buffer in commit log, may be null if not invoked in store.
+     * @param properties message properties, should decode from buffer if null by yourself.
+     * @return
+     */
     @Override
     public boolean isMatchedByCommitLog(ByteBuffer msgBuffer, Map<String, String> properties) {
         if (subscriptionData == null) {
@@ -125,6 +138,7 @@ public class ExpressionMessageFilter implements MessageFilter {
         }
 
         if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
+            // 不支持tag过滤
             return true;
         }
 
@@ -134,6 +148,7 @@ public class ExpressionMessageFilter implements MessageFilter {
         // no expression
         if (realFilterData == null || realFilterData.getExpression() == null
             || realFilterData.getCompiledExpression() == null) {
+            // 如果过滤模式是tag的，直接返回
             return true;
         }
 

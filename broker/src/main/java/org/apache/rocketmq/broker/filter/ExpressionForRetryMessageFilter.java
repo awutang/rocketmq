@@ -48,7 +48,9 @@ public class ExpressionForRetryMessageFilter extends ExpressionMessageFilter {
 
         boolean isRetryTopic = subscriptionData.getTopic().startsWith(MixAll.RETRY_GROUP_TOPIC_PREFIX);
 
+        // 支持对重试主题的过滤，非重试主题的非tag
         if (!isRetryTopic && ExpressionType.isTagType(subscriptionData.getExpressionType())) {
+            // 但不支持费重试主题的tag过滤？
             return true;
         }
 
@@ -56,6 +58,7 @@ public class ExpressionForRetryMessageFilter extends ExpressionMessageFilter {
         Map<String, String> tempProperties = properties;
         boolean decoded = false;
         if (isRetryTopic) {
+            // 此处才是支持重试主题的
             // retry topic, use original filter data.
             // poor performance to support retry filter.
             if (tempProperties == null && msgBuffer != null) {
@@ -70,6 +73,7 @@ public class ExpressionForRetryMessageFilter extends ExpressionMessageFilter {
         // no expression
         if (realFilterData == null || realFilterData.getExpression() == null
             || realFilterData.getCompiledExpression() == null) {
+            // 如果过滤类型是tag的，直接返回
             return true;
         }
 

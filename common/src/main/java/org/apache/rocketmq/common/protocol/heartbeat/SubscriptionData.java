@@ -28,24 +28,34 @@ import java.util.Set;
 
 /**
  * 消息topic订阅 当前consumer需要消费的某主题+消息过滤
+ *
+ * rocketmq支持表达式过滤与类过滤两种模式，其中表达式分为TAG（根据消息属性tag进行过滤）、SQL92（以消息属性过滤上下文--其他非tag属性吗？--应该包括tag,因为tag也是属于properties的）
  */
 public class SubscriptionData implements Comparable<SubscriptionData> {
+
+    // 过滤模式，默认全匹配
     public final static String SUB_ALL = "*";
 
     // 消息过滤机制是否为类过滤模式--类过滤模式是咋样的？
     private boolean classFilterMode = false;
     private String topic;
 
+    // 过滤表达式
     // subscription expression.it only support or operation such as "tag1 || tag2 || tag3" <br>
     //     * if null or * expression,meaning subscribe all
     private String subString;
 
     // tagsSet+codeSet都是根据tags生成的
+    // 消息过滤tag合集，consumer过滤所用的
     private Set<String> tagsSet = new HashSet<String>();
+    // 消息过滤tag hashCode合集，broker过滤所用的(consumer向broker拉取消息时)
     private Set<Integer> codeSet = new HashSet<Integer>();
     private long subVersion = System.currentTimeMillis();
 
-    // 消息表达式类型，分为TAG、SQL92
+    // 表达式过滤的类型，分为TAG（根据消息属性tag进行过滤）、SQL92（以消息属性过滤上下文），与上文subString对应
+    // TAG时在broker过滤tagHashCode+consumer过滤tag
+
+    // 默认TAG，在subscribe(final String topic, final MessageSelector messageSelector)中可以指定SQL92
     private String expressionType = ExpressionType.TAG;
 
     @JSONField(serialize = false)
