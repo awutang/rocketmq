@@ -135,6 +135,11 @@ public abstract class RebalanceImpl {
         return result;
     }
 
+    /**
+     * MessageQueue在broker端被加锁了
+     * @param mq
+     * @return
+     */
     public boolean lock(final MessageQueue mq) {
         FindBrokerResult findBrokerResult = this.mQClientFactory.findBrokerAddressInSubscribe(mq.getBrokerName(), MixAll.MASTER_ID, true);
         if (findBrokerResult != null) {
@@ -149,6 +154,7 @@ public abstract class RebalanceImpl {
                 for (MessageQueue mmqq : lockedMq) {
                     ProcessQueue processQueue = this.processQueueTable.get(mmqq);
                     if (processQueue != null) {
+                        // 对mq对应的processQueue加锁
                         processQueue.setLocked(true);
                         processQueue.setLastLockTimestamp(System.currentTimeMillis());
                     }
@@ -168,10 +174,16 @@ public abstract class RebalanceImpl {
         return false;
     }
 
+    /**
+     * 锁定当前消费者的所有消费队列
+     */
     public void lockAll() {
+
+        // 当前消费者负载的消息队列缓存表 待拉取队列：本地消息数据->broker:mqSet
         HashMap<String, Set<MessageQueue>> brokerMqs = this.buildProcessQueueTableByBrokerName();
 
         Iterator<Entry<String, Set<MessageQueue>>> it = brokerMqs.entrySet().iterator();
+        // 循环锁定broker与相应的mq
         while (it.hasNext()) {
             Entry<String, Set<MessageQueue>> entry = it.next();
             final String brokerName = entry.getKey();
@@ -198,14 +210,17 @@ public abstract class RebalanceImpl {
                                 log.info("the message queue locked OK, Group: {} {}", this.consumerGroup, mq);
                             }
 
+                            // 也锁定了processQueue
                             processQueue.setLocked(true);
                             processQueue.setLastLockTimestamp(System.currentTimeMillis());
                         }
                     }
                     for (MessageQueue mq : mqs) {
                         if (!lockOKMQSet.contains(mq)) {
+                            // 如果加锁的队列中不包括mq,则需要对mq相应的processQueue解锁
                             ProcessQueue processQueue = this.processQueueTable.get(mq);
                             if (processQueue != null) {
+                                // 设置为false会影响到消费与拉取
                                 processQueue.setLocked(false);
                                 log.warn("the message queue locked Failed, Group: {} {}", this.consumerGroup, mq);
                             }
@@ -350,7 +365,7 @@ public abstract class RebalanceImpl {
     /**
      * 消息队列负载 对比当前consumer现在分配的消费队列与之前是否不同，有不同的则更新
      * @param topic
-     * @param mqSet
+     * @param mqSet:现在分配的队列
      * @param isOrder
      * @return
      */
@@ -365,13 +380,13 @@ public abstract class RebalanceImpl {
             ProcessQueue pq = next.getValue();
 
             if (mq.getTopic().equals(topic)) {
-                // 如果之前的负载队列不在此次新分配的队列中，则需要停止该队列且保存消费进度
+                // 1.如果之前的负载队列mq不在此次新分配的队列中，则需要停止该队列且保存消费进度
                 if (!mqSet.contains(mq)) {
-                    // 暂停消费，processQueue中的数据不再被消费--那之后还会恢复吗？因为还有已经拉取到consumer的消息
+                    // 1.1 暂停消费，processQueue中的数据不再被消费--那之后还会恢复吗？因为还有已经拉取到consumer的消息
                     pq.setDropped(true);
-                    // 持久化消费进度
+                    // 1.2 持久化消费进度
                     if (this.removeUnnecessaryMessageQueue(mq, pq)) {
-                        // 从processQueueTable中删除mq:processQueue
+                        // 从processQueueTable中删除mq:processQueue，删除之后processQueue对象应该是会被gc,mq对象仍然在topicSubscribeInfoTable中
                         it.remove();
                         changed = true;
                         log.info("doRebalance, {}, remove unnecessary mq, {}", consumerGroup, mq);
@@ -396,20 +411,23 @@ public abstract class RebalanceImpl {
             }
         }
 
-        // 若本次新分配了队列，则创建pullReguest发起拉取
+        // 2. 若本次新分配了队列，则创建pullReguest发起拉取
         List<PullRequest> pullRequestList = new ArrayList<PullRequest>();
         for (MessageQueue mq : mqSet) {
-            // 循环构造pullRequest对象，根据mq
+            // 2.1 循环构造pullRequest对象，根据mq
             if (!this.processQueueTable.containsKey(mq)) {
+                // mq是新分配的队列
                 if (isOrder && !this.lock(mq)) {
+                    // 顺序消费与并发消费区别1：顺序消费中mq会在broker端加锁，若失败则说明还有其他consumer正占据着此mq,因此先不把此mq分配给
+                    // 当前consumer,从此实现了消费某一个队列时，consumer之间得同步
                     log.warn("doRebalance, {}, add a new mq failed, {}, because lock failed", consumerGroup, mq);
                     continue;
                 }
 
-                // 从内存中移除消费进度
+                // 2.2 从内存中移除消费进度
                 this.removeDirtyOffset(mq);
                 ProcessQueue pq = new ProcessQueue();
-                // 获取上次持久化的消费进度
+                // 2.3获取上次1.2持久化的消费进度
                 long nextOffset = this.computePullFromWhere(mq);
                 if (nextOffset >= 0) {
                     ProcessQueue pre = this.processQueueTable.putIfAbsent(mq, pq);

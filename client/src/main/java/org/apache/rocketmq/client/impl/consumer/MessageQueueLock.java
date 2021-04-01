@@ -24,6 +24,7 @@ import org.apache.rocketmq.common.message.MessageQueue;
  * Message lock,strictly ensure the single queue only one thread at a time consuming
  */
 public class MessageQueueLock {
+    // 线程安全的
     private ConcurrentMap<MessageQueue, Object> mqLockTable =
         new ConcurrentHashMap<MessageQueue, Object>();
 
@@ -31,12 +32,16 @@ public class MessageQueueLock {
         Object objLock = this.mqLockTable.get(mq);
         if (null == objLock) {
             objLock = new Object();
+
+            // 当有两个线程A与B同时到达此处时，A返回null,B返回A put的；但如果C才执行到第一行，那么C返回的是B.objLock
+            // --！！！putIfAbsent是指当没有数据时才插入成功，所以B put不成功,C返回的仍然是A.objLock。对同一个对象加锁，保证同步
             Object prevLock = this.mqLockTable.putIfAbsent(mq, objLock);
             if (prevLock != null) {
                 objLock = prevLock;
             }
         }
 
+        // A 返回A的objLock,B也返回A的objLock
         return objLock;
     }
 }

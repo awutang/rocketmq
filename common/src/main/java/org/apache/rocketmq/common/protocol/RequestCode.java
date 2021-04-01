@@ -67,6 +67,7 @@ public class RequestCode {
 
     public static final int NOTIFY_CONSUMER_IDS_CHANGED = 40;
 
+    // consumer顺序消费时锁定broker端mq
     public static final int LOCK_BATCH_MQ = 41;
 
     public static final int UNLOCK_BATCH_MQ = 42;

@@ -78,7 +78,7 @@ public class ProcessQueue {
     // 上一次消费时间戳
     private volatile long lastConsumeTimestamp = System.currentTimeMillis();
 
-    // 通过locked变量对processQueue进行同步控制，实际并没有加锁
+    // 通过locked变量对processQueue进行同步控制，实际并没有加锁--其实是processQueue对应的MessageQueue在broker端被加锁了
     private volatile boolean locked = false;
     private volatile long lastLockTimestamp = System.currentTimeMillis();
 
@@ -287,10 +287,15 @@ public class ProcessQueue {
         }
     }
 
+    /**
+     * 提交
+     * @return
+     */
     public long commit() {
         try {
             this.lockTreeMap.writeLock().lockInterruptibly();
             try {
+                // 删除消息并返回offset
                 Long offset = this.consumingMsgOrderlyTreeMap.lastKey();
                 msgCount.addAndGet(0 - this.consumingMsgOrderlyTreeMap.size());
                 for (MessageExt msg : this.consumingMsgOrderlyTreeMap.values()) {
@@ -343,6 +348,7 @@ public class ProcessQueue {
                         Map.Entry<Long, MessageExt> entry = this.msgTreeMap.pollFirstEntry();
                         if (entry != null) {
                             result.add(entry.getValue());
+                            // consumingMsgOrderlyTreeMap有啥用？
                             consumingMsgOrderlyTreeMap.put(entry.getKey(), entry.getValue());
                         } else {
                             break;

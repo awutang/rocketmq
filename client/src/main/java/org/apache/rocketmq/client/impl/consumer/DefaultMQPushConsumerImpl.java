@@ -113,7 +113,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
     private boolean consumeOrderly = false;
     private MessageListener messageListenerInner;
 
-    // 消费进度
+    // 消费进度 是consumeQueueOffset吧？
     private OffsetStore offsetStore;
     private ConsumeMessageService consumeMessageService;
     private long queueFlowControlTimes = 0;
@@ -289,6 +289,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
             // 顺序消费
             if (processQueue.isLocked()) {
                 if (!pullRequest.isLockedFirst()) {
+                    // pullRequest第一次拉取任务（processQueue是新建的）
 
                     // 更新pullRequest中的消费进度
                     final long offset = this.rebalanceImpl.computePullFromWhere(pullRequest.getMessageQueue());
@@ -301,9 +302,11 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                     }
 
                     pullRequest.setLockedFirst(true);
+                    // myConfusion:其实rebalanceImpl.updateProcessQueueTableInRebalance中新增pullRequest时已经做了获取获取持久化offset并向pullRequest设置的逻辑，为啥这里还需要再做一次？
                     pullRequest.setNextOffset(offset);
                 }
             } else {
+                // 若processQueue未被锁定，则延迟3s后将pullRequest放入pullRequestQueue中（因为processQueue需要被锁定的）
                 this.executePullRequestLater(pullRequest, pullTimeDelayMillsWhenException);
                 log.info("pull message later because not locked in broker, {}", pullRequest);
                 return;
@@ -354,6 +357,8 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                                 // 从pullResult.msgFoundList获取消息，并put至processQueue
                                 boolean dispatchToConsume = processQueue.putMessage(pullResult.getMsgFoundList());
                                 // 将processQueue提交到consumeMessageService.consumeExecutor
+                                // 只有一个线程异步执行，因此消费任务不会有多个相同messageQueue的任务--但是之后pullRequest仍会放入pullRequestQueue进行之后的拉取
+                                // 如果拉取到数据了，则相同队列得提交消费任务了
                                 DefaultMQPushConsumerImpl.this.consumeMessageService.submitConsumeRequest(
                                     pullResult.getMsgFoundList(),
                                     processQueue,
@@ -680,6 +685,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                         new ConsumeMessageConcurrentlyService(this, (MessageListenerConcurrently) this.getMessageListenerInner());
                 }
 
+                // 启动消息消费
                 this.consumeMessageService.start();
 
                 // 5.向MQClientInstance注册consumer

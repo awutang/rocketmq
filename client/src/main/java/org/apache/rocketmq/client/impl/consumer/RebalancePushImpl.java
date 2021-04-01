@@ -168,6 +168,8 @@ public class RebalancePushImpl extends RebalanceImpl {
 
                 // 小于0时才采用不同的consumeFromWhere策略
                 // 从队列当前最大偏移量开始消费
+
+                // 从磁盘或broker获取offset
                 long lastOffset = offsetStore.readOffset(mq, ReadOffsetType.READ_FROM_STORE);
                 if (lastOffset >= 0) {
                     result = lastOffset;

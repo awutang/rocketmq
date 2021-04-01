@@ -29,9 +29,13 @@ import org.apache.rocketmq.common.message.MessageQueue;
 
 public class RebalanceLockManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.REBALANCE_LOCK_LOGGER_NAME);
+
+    // 锁住的时间是60s
     private final static long REBALANCE_LOCK_MAX_LIVE_TIME = Long.parseLong(System.getProperty(
         "rocketmq.broker.rebalance.lockMaxLiveTime", "60000"));
     private final Lock lock = new ReentrantLock();
+
+    // consumerGroup:此消费组下锁定的mq
     private final ConcurrentMap<String/* group */, ConcurrentHashMap<MessageQueue, LockEntry>> mqLockTable =
         new ConcurrentHashMap<String, ConcurrentHashMap<MessageQueue, LockEntry>>(1024);
 
@@ -97,6 +101,13 @@ public class RebalanceLockManager {
         return true;
     }
 
+    /**
+     * 是否group+mq+consumer锁定
+     * @param group
+     * @param mq
+     * @param clientId
+     * @return
+     */
     private boolean isLocked(final String group, final MessageQueue mq, final String clientId) {
         ConcurrentHashMap<MessageQueue, LockEntry> groupValue = this.mqLockTable.get(group);
         if (groupValue != null) {
@@ -114,12 +125,20 @@ public class RebalanceLockManager {
         return false;
     }
 
+    /**
+     * 锁定mq，其实本质是放在mqLockTable中
+     * @param group
+     * @param mqs
+     * @param clientId
+     * @return
+     */
     public Set<MessageQueue> tryLockBatch(final String group, final Set<MessageQueue> mqs,
         final String clientId) {
         Set<MessageQueue> lockedMqs = new HashSet<MessageQueue>(mqs.size());
         Set<MessageQueue> notLockedMqs = new HashSet<MessageQueue>(mqs.size());
 
         for (MessageQueue mq : mqs) {
+            // 是否group+mq+consumer锁定
             if (this.isLocked(group, mq, clientId)) {
                 lockedMqs.add(mq);
             } else {
@@ -129,6 +148,7 @@ public class RebalanceLockManager {
 
         if (!notLockedMqs.isEmpty()) {
             try {
+                // 保护try{}中的同步性
                 this.lock.lockInterruptibly();
                 try {
                     ConcurrentHashMap<MessageQueue, LockEntry> groupValue = this.mqLockTable.get(group);
@@ -140,6 +160,8 @@ public class RebalanceLockManager {
                     for (MessageQueue mq : notLockedMqs) {
                         LockEntry lockEntry = groupValue.get(mq);
                         if (null == lockEntry) {
+
+                            // consumer+mq锁住了
                             lockEntry = new LockEntry();
                             lockEntry.setClientId(clientId);
                             groupValue.put(mq, lockEntry);
@@ -159,6 +181,7 @@ public class RebalanceLockManager {
                         String oldClientId = lockEntry.getClientId();
 
                         if (lockEntry.isExpired()) {
+                            // 若oldConsumer锁mq过期了，则替换成当前consumer
                             lockEntry.setClientId(clientId);
                             lockEntry.setLastUpdateTimestamp(System.currentTimeMillis());
                             log.warn(

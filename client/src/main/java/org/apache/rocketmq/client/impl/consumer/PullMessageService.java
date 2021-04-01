@@ -105,6 +105,8 @@ public class PullMessageService extends ServiceThread {
 
     /**
      * PULL模式--其实是为PUSH模式做的？
+     *
+     * 只有一个线程异步执行
      */
     @Override
     public void run() {

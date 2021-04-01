@@ -31,6 +31,8 @@ public class PullRequest {
 
     // consumeQueue消息拉取偏移量
     private long nextOffset;
+
+    // 初始值是false,表示PullRequest是在Rebalance时新建的（此时processQueue也是新建的）
     private boolean lockedFirst = false;
 
     public boolean isLockedFirst() {
