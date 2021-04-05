@@ -497,6 +497,7 @@ public class MQClientInstance {
         if (this.lockHeartbeat.tryLock()) {
             try {
                 this.sendHeartbeatToAllBroker();
+                // 将过滤类源码发送至filterServer
                 this.uploadFilterClassSource();
             } catch (final Exception e) {
                 log.error("sendHeartbeatToAllBroker exception", e);
@@ -607,6 +608,9 @@ public class MQClientInstance {
         }
     }
 
+    /**
+     * 将过滤类源码发送至filterServer
+     */
     private void uploadFilterClassSource() {
         Iterator<Entry<String, MQConsumerInner>> it = this.consumerTable.entrySet().iterator();
         while (it.hasNext()) {
@@ -792,8 +796,11 @@ public class MQClientInstance {
     }
 
     /**
+     * 将过滤类源码发送至filterServer
      * This method will be removed in the version 5.0.0,because filterServer was removed,and method
      * <code>subscribe(final String topic, final MessageSelector messageSelector)</code> is recommended.
+     *
+     * 注意：RocketMQ4.3.1开始删除与 mqfilterSrv 服务器相关的脚本，4.3.2删除客户端关于mqfilterSrv 客户端代码，后面版本不支持该功能。
      */
     @Deprecated
     private void uploadFilterClassToAllFilterServer(final String consumerGroup, final String fullClassName,
@@ -803,6 +810,8 @@ public class MQClientInstance {
         int classCRC = 0;
         try {
             classBody = filterClassSource.getBytes(MixAll.DEFAULT_CHARSET);
+
+            // 唯一标记源码内容的
             classCRC = UtilAll.crc32(classBody);
         } catch (Exception e1) {
             log.warn("uploadFilterClassToAllFilterServer Exception, ClassName: {} {}",
@@ -817,6 +826,8 @@ public class MQClientInstance {
             while (it.hasNext()) {
                 Entry<String, List<String>> next = it.next();
                 List<String> value = next.getValue();
+
+                // 向所有filterServer发送过滤类
                 for (final String fsAddr : value) {
                     try {
                         this.mQClientAPIImpl.registerMessageFilterClass(fsAddr, consumerGroup, topic, fullClassName, classCRC, classBody,

@@ -780,7 +780,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
      * Subscribe a topic to consuming subscription.
      *
      * @param topic topic to consume.
-     * @param fullClassName full class name,must extend org.apache.rocketmq.common.filter. MessageFilter
+     * @param fullClassName full class name,must extend org.apache.rocketmq.common.filter.MessageFilter
      * @param filterClassSource class source code,used UTF-8 file encoding,must be responsible for your code safety
      */
     @Override
@@ -799,7 +799,7 @@ public class DefaultMQPushConsumer extends ClientConfig implements MQPushConsume
     @Override
     public void subscribe(final String topic, final MessageSelector messageSelector) throws MQClientException {
 
-        //
+        // 订阅表达式过滤
         this.defaultMQPushConsumerImpl.subscribe(withNamespace(topic), messageSelector);
     }
 

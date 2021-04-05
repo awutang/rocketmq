@@ -1194,6 +1194,16 @@ public class MQClientAPIImpl {
         throw new MQBrokerException(response.getCode(), response.getRemark(), addr);
     }
 
+    /**
+     * 2PC第二阶段：producer向broker发送提交、回滚、不作为（UNKNOWN）
+     * @param addr
+     * @param requestHeader
+     * @param remark
+     * @param timeoutMillis
+     * @throws RemotingException
+     * @throws MQBrokerException
+     * @throws InterruptedException
+     */
     public void endTransactionOneway(
         final String addr,
         final EndTransactionRequestHeader requestHeader,

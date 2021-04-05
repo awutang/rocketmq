@@ -67,6 +67,7 @@ public class RemotingUtil {
                         if (method != null) {
                             final SelectorProvider selectorProvider = (SelectorProvider) method.invoke(null);
                             if (selectorProvider != null) {
+                                // epoll_wait
                                 result = selectorProvider.openSelector();
                             }
                         }

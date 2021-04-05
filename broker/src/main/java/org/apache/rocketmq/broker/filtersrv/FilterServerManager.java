@@ -50,6 +50,9 @@ public class FilterServerManager {
         this.brokerController = brokerController;
     }
 
+    /**
+     * 1. 如果broker检测注册信息发现filterServer进程数目少于配置中的，则broker会创建filterServer进程
+     */
     public void start() {
 
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
@@ -69,10 +72,15 @@ public class FilterServerManager {
             this.brokerController.getBrokerConfig().getFilterServerNums() - this.filterServerTable.size();
         String cmd = this.buildStartCommand();
         for (int i = 0; i < more; i++) {
+            // java调用shell命令启动filterServer进程
             FilterServerUtil.callShell(cmd, log);
         }
     }
 
+    /**
+     * 进程启动命令
+     * @return
+     */
     private String buildStartCommand() {
         String config = "";
         if (BrokerStartup.configFile != null) {

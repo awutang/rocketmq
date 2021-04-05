@@ -58,11 +58,13 @@ public class RequestCode {
     // consumer发送ACK到broker(消息重试消费)
     public static final int CONSUMER_SEND_MSG_BACK = 36;
 
+    // producer向broker发送结束事务请求
     public static final int END_TRANSACTION = 37;
 
     // consumer向broker获取消费组内的所有cid
     public static final int GET_CONSUMER_LIST_BY_GROUP = 38;
 
+    // broker向producer发起事务回查
     public static final int CHECK_TRANSACTION_STATE = 39;
 
     public static final int NOTIFY_CONSUMER_IDS_CHANGED = 40;
@@ -143,6 +145,8 @@ public class RequestCode {
     public static final int GET_TOPICS_BY_CLUSTER = 224;
 
     public static final int REGISTER_FILTER_SERVER = 301;
+
+    // consumer向filterServer发送过滤类源码
     public static final int REGISTER_MESSAGE_FILTER_CLASS = 302;
 
     public static final int QUERY_CONSUME_TIME_SPAN = 303;

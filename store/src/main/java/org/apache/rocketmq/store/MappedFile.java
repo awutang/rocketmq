@@ -350,7 +350,7 @@ public class MappedFile extends ReferenceResource {
     /**
      * @return The current flushed position
      *
-     * 刷盘，从fileChannel or mappedByteBuffer
+     * 刷盘，从fileChannel or mappedByteBuffer 到磁盘文件
      */
     public int flush(final int flushLeastPages) {
         if (this.isAbleToFlush(flushLeastPages)) {

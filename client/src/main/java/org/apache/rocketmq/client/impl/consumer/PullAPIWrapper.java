@@ -281,6 +281,7 @@ public class PullAPIWrapper {
             List<String> list = topicRouteData.getFilterServerTable().get(brokerAddr);
 
             if (list != null && !list.isEmpty()) {
+                // 随机获取一个
                 return list.get(randomNum() % list.size());
             }
         }

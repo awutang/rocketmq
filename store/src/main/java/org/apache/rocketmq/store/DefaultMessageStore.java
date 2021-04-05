@@ -92,7 +92,7 @@ public class DefaultMessageStore implements MessageStore {
     // commitLog消息分发 消息到达commitLog后将异步转发消息到consumeQueue、indexFile(根据commitLog文件构建consumeQueue文件与indexFile文件)
     private final ReputMessageService reputMessageService;
 
-    // 存储HA机制 high available?
+    // 存储HA机制 high available
     private final HAService haService;
 
     private final ScheduleMessageService scheduleMessageService;
@@ -154,6 +154,7 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService = new StoreStatsService();
         this.indexService = new IndexService(this);
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
+            // HA
             this.haService = new HAService(this);
         } else {
             this.haService = null;
@@ -311,6 +312,8 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         if (!messageStoreConfig.isEnableDLegerCommitLog()) {
+
+            // 启动主从同步
             this.haService.start();
 
             // 定时消费消息

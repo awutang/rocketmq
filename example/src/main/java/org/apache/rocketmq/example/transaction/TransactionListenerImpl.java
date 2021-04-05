@@ -29,6 +29,14 @@ public class TransactionListenerImpl implements TransactionListener {
 
     private ConcurrentHashMap<String, Integer> localTrans = new ConcurrentHashMap<>();
 
+    /**
+     * 记录事务消息的本地状态，该方法与业务代码处于同一个事务中，与业务事务要么一起成功，要么一起失败
+     * --myConfusionsv:业务事务啥时候执行提交？--应该是看之后业务代码的逻辑，最终status在checkLocalTransaction()中返回，
+     * 因此在executeLocalTransaction()中先暂时返回UNKNOWN。
+     * @param msg Half(prepare) message
+     * @param arg Custom business parameter
+     * @return
+     */
     @Override
     public LocalTransactionState executeLocalTransaction(Message msg, Object arg) {
         int value = transactionIndex.getAndIncrement();
@@ -37,6 +45,11 @@ public class TransactionListenerImpl implements TransactionListener {
         return LocalTransactionState.UNKNOW;
     }
 
+    /**
+     * 事务回查
+     * @param msg Check message
+     * @return
+     */
     @Override
     public LocalTransactionState checkLocalTransaction(MessageExt msg) {
         Integer status = localTrans.get(msg.getTransactionId());

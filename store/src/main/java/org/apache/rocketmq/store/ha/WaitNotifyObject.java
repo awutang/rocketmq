@@ -31,6 +31,9 @@ public class WaitNotifyObject {
 
     protected volatile boolean hasNotified = false;
 
+    /**
+     * 唤醒
+     */
     public void wakeup() {
         synchronized (this) {
             if (!this.hasNotified) {
@@ -40,6 +43,10 @@ public class WaitNotifyObject {
         }
     }
 
+    /**
+     * 等待
+     * @param interval
+     */
     protected void waitForRunning(long interval) {
         synchronized (this) {
             if (this.hasNotified) {
@@ -48,6 +55,7 @@ public class WaitNotifyObject {
                 return;
             }
 
+            // 首次执行到这
             try {
                 this.wait(interval);
             } catch (InterruptedException e) {
@@ -77,6 +85,10 @@ public class WaitNotifyObject {
         }
     }
 
+    /**
+     * 所有被阻塞的线程及notify状态
+     * @param interval
+     */
     public void allWaitForRunning(long interval) {
         long currentThreadId = Thread.currentThread().getId();
         synchronized (this) {

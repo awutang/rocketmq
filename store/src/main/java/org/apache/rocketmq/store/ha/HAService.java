@@ -53,6 +53,8 @@ public class HAService {
     private final DefaultMessageStore defaultMessageStore;
 
     private final WaitNotifyObject waitNotifyObject = new WaitNotifyObject();
+
+    // slave中已成功复制的最大偏移量
     private final AtomicLong push2SlaveMaxOffset = new AtomicLong(0);
 
     private final GroupTransferService groupTransferService;
@@ -86,10 +88,20 @@ public class HAService {
         return result;
     }
 
+    /**
+     * 通知 等待新数据从master被同步到slave的线程
+     * @param offset:slave拉取请求中的maxPhyOffset
+     */
     public void notifyTransferSome(final long offset) {
         for (long value = this.push2SlaveMaxOffset.get(); offset > value; ) {
+
+            // offset > value表示slave有同步到数据
             boolean ok = this.push2SlaveMaxOffset.compareAndSet(value, offset);
             if (ok) {
+                // 通知 等待新数据从master被同步到slave的线程(消息发送者线程)--myConfusionsv:为啥是由master收到slave拉取请求的事件来触发这个等待线程？
+                //  --因为拉取请求中的offset对于master来说可以理解为master同步消息到slave的ACK确认消息，反映的是slave中当前复制进度
+
+                // 唤醒groupTransferService，继续执行判断是否
                 this.groupTransferService.notifyTransferSome();
                 break;
             } else {
@@ -106,10 +118,20 @@ public class HAService {
     // this.groupTransferService.notifyTransferSome();
     // }
 
+    /**
+     * 启动主从同步
+     * @throws Exception
+     */
     public void start() throws Exception {
+        // 1.master broker启动，监听slave的连接 --myConfusion:但是slave不需要这个操作勒--slave开启监听后会一直没有连接过来,之后会断开的吧？
         this.acceptSocketService.beginAccept();
+        // 2.master接收slave连接
         this.acceptSocketService.start();
+        // 3.
         this.groupTransferService.start();
+        // 4.slave向master发送待拉取偏移量，master解析请求并返回消息给slave, slave保存返回的消息，并继续发送消息同步请求
+        // --myConfusionsv:producer发送数据时只到master?所以之后才需要从master同步数据到slave--是的，producer只向mster发送数据
+        // 只有slave才能启动成功，因为发起连接时的远程地址只有slave才有
         this.haClient.start();
     }
 
@@ -177,6 +199,7 @@ public class HAService {
             this.serverSocketChannel.socket().setReuseAddress(true);
             this.serverSocketChannel.socket().bind(this.socketAddressListen);
             this.serverSocketChannel.configureBlocking(false);
+            // channel注册到selector，并监听accept事件
             this.serverSocketChannel.register(this.selector, SelectionKey.OP_ACCEPT);
         }
 
@@ -196,6 +219,8 @@ public class HAService {
 
         /**
          * {@inheritDoc}
+         *
+         * 接收slave连接
          */
         @Override
         public void run() {
@@ -209,6 +234,7 @@ public class HAService {
                     if (selected != null) {
                         for (SelectionKey k : selected) {
                             if ((k.readyOps() & SelectionKey.OP_ACCEPT) != 0) {
+                                // ACCEPT ready,接收连接，创建客户端channel
                                 SocketChannel sc = ((ServerSocketChannel) k.channel()).accept();
 
                                 if (sc != null) {
@@ -217,6 +243,8 @@ public class HAService {
 
                                     try {
                                         HAConnection conn = new HAConnection(HAService.this, sc);
+
+                                        // 启动读写
                                         conn.start();
                                         HAService.this.addConnection(conn);
                                     } catch (Exception e) {
@@ -250,11 +278,19 @@ public class HAService {
 
     /**
      * GroupTransferService Service
+     *
+     * 主从同步阻塞实现，同步主从模式：producer发送消息到master后,当前broker上正在处理消息发送请求的线程需要等待master将数据同步到slave
+     *
+     * 类的字段用法类似GroupCommitService
      */
     class GroupTransferService extends ServiceThread {
 
         private final WaitNotifyObject notifyTransferObject = new WaitNotifyObject();
+
+        // 提交任务
         private volatile List<CommitLog.GroupCommitRequest> requestsWrite = new ArrayList<>();
+
+        // 执行任务
         private volatile List<CommitLog.GroupCommitRequest> requestsRead = new ArrayList<>();
 
         public synchronized void putRequest(final CommitLog.GroupCommitRequest request) {
@@ -274,14 +310,24 @@ public class HAService {
             this.requestsRead = tmp;
         }
 
+        /**
+         * 当主从同步结束后，通知正在等待HA结果的消息发送者线程
+         */
         private void doWaitTransfer() {
             synchronized (this.requestsRead) {
                 if (!this.requestsRead.isEmpty()) {
                     for (CommitLog.GroupCommitRequest req : this.requestsRead) {
+
+                        // 1.slave中已成功复制的最大偏移量大于等于Producer发送消息后master返回下一条消息的起始偏移量，表示主从同步已完成
                         boolean transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
                         long waitUntilWhen = HAService.this.defaultMessageStore.getSystemClock().now()
                             + HAService.this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout();
+
+                        // 2.循环判断
                         while (!transferOK && HAService.this.defaultMessageStore.getSystemClock().now() < waitUntilWhen) {
+                            // 等待直到主从同步完成或等待5s超时,每次等待1s
+                            // 2.1 被notifyTransferSome(final long offset)唤醒，因为slave同步到了数据，所以接下来要判断
+                            // slave中的同步进度是否已经到达了master的当前进度（step 1）
                             this.notifyTransferObject.waitForRunning(1000);
                             transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
                         }
@@ -290,6 +336,7 @@ public class HAService {
                             log.warn("transfer messsage to slave timeout, " + req.getNextOffset());
                         }
 
+                        // myConfusionsv:通知发送者线程？？？--是的，通过future进行结果的同步
                         req.wakeupCustomer(transferOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_SLAVE_TIMEOUT);
                     }
 
@@ -303,6 +350,7 @@ public class HAService {
 
             while (!this.isStopped()) {
                 try {
+                    // 当前GroupTransferService线程10ms
                     this.waitForRunning(10);
                     this.doWaitTransfer();
                 } catch (Exception e) {
@@ -324,14 +372,20 @@ public class HAService {
         }
     }
 
+    /**
+     * 主从同步slave端的核心实现类
+     */
     class HAClient extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
         private final AtomicReference<String> masterAddress = new AtomicReference<>();
+
+        // offset只需要8个字节
         private final ByteBuffer reportOffset = ByteBuffer.allocate(8);
         private SocketChannel socketChannel;
         private Selector selector;
         private long lastWriteTimestamp = System.currentTimeMillis();
 
+        // slave当前的复制进度
         private long currentReportedOffset = 0;
         private int dispatchPosition = 0;
         private ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
@@ -402,13 +456,21 @@ public class HAService {
             this.byteBufferBackup = tmp;
         }
 
+        /**
+         * 处理从master返回的消息数据
+         * @return
+         */
         private boolean processReadEvent() {
             int readSizeZeroTimes = 0;
             while (this.byteBufferRead.hasRemaining()) {
                 try {
+
+                    // 从channel读数据到byteBufferRead
                     int readSize = this.socketChannel.read(this.byteBufferRead);
                     if (readSize > 0) {
                         readSizeZeroTimes = 0;
+
+                        // 将读取到的消息放到内存映射文件中
                         boolean result = this.dispatchReadRequest();
                         if (!result) {
                             log.error("HAClient, dispatchReadRequest error");
@@ -431,6 +493,10 @@ public class HAService {
             return true;
         }
 
+        /**
+         * 消息写到commitLog
+         * @return
+         */
         private boolean dispatchReadRequest() {
             final int msgHeaderSize = 8 + 4; // phyoffset + size
             int readSocketPos = this.byteBufferRead.position();
@@ -456,6 +522,7 @@ public class HAService {
                         this.byteBufferRead.position(this.dispatchPosition + msgHeaderSize);
                         this.byteBufferRead.get(bodyData);
 
+                        // 消息写到commitLog fileChannel
                         HAService.this.defaultMessageStore.appendToCommitLog(masterPhyOffset, bodyData);
 
                         this.byteBufferRead.position(readSocketPos);
@@ -479,6 +546,10 @@ public class HAService {
             return true;
         }
 
+        /**
+         * 更新currentReportedOffset
+         * @return
+         */
         private boolean reportSlaveMaxOffsetPlus() {
             boolean result = true;
             long currentPhyOffset = HAService.this.defaultMessageStore.getMaxPhyOffset();
@@ -494,13 +565,21 @@ public class HAService {
             return result;
         }
 
+        /**
+         * 向master发起连接
+         * @return
+         * @throws ClosedChannelException
+         */
         private boolean connectMaster() throws ClosedChannelException {
             if (null == socketChannel) {
                 String addr = this.masterAddress.get();
                 if (addr != null) {
 
+                    // broker master地址
                     SocketAddress socketAddress = RemotingUtil.string2SocketAddress(addr);
                     if (socketAddress != null) {
+
+                        // 包括了new SocketChannel()
                         this.socketChannel = RemotingUtil.connect(socketAddress);
                         if (this.socketChannel != null) {
                             this.socketChannel.register(this.selector, SelectionKey.OP_READ);
@@ -547,10 +626,13 @@ public class HAService {
         public void run() {
             log.info(this.getServiceName() + " service started");
 
+            // 循环向master发送offset并接收返回
             while (!this.isStopped()) {
                 try {
+                    // 1. slave连接master
                     if (this.connectMaster()) {
 
+                        // 2. 判断是否需要向master发送当前待拉取offset即当前slave复制进度（在心跳检测中做的）
                         if (this.isTimeToReportOffset()) {
                             boolean result = this.reportSlaveMaxOffset(this.currentReportedOffset);
                             if (!result) {
@@ -558,8 +640,10 @@ public class HAService {
                             }
                         }
 
+                        // 3. 监听read ready
                         this.selector.select(1000);
 
+                        // 4. 处理从master返回的消息数据
                         boolean ok = this.processReadEvent();
                         if (!ok) {
                             this.closeMaster();

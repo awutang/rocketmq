@@ -995,7 +995,7 @@ public class CommitLog {
 
         // 将数据从内存刷到磁盘
         handleDiskFlush(result, putMessageResult, msg);
-        // HA主从同步复制
+        // 对当前这条消息进行HA主从同步复制即把这条消息同步到slave
         handleHA(result, putMessageResult, msg);
 
         return putMessageResult;
@@ -1100,17 +1100,26 @@ public class CommitLog {
         }
     }
 
+    /**
+     * 主从同步,当前正在执行消息发送（接收消息发送请求）逻辑的线程判断是否此消息已经同步到slave
+     * @param result
+     * @param putMessageResult
+     * @param messageExt
+     */
     public void handleHA(AppendMessageResult result, PutMessageResult putMessageResult, MessageExt messageExt) {
         if (BrokerRole.SYNC_MASTER == this.defaultMessageStore.getMessageStoreConfig().getBrokerRole()) {
             HAService service = this.defaultMessageStore.getHaService();
             if (messageExt.isWaitStoreMsgOK()) {
                 // Determine whether to wait
                 if (service.isSlaveOK(result.getWroteOffset() + result.getWroteBytes())) {
+
+                    // 监听master同步当前result消息到slave是否已完成
                     GroupCommitRequest request = new GroupCommitRequest(result.getWroteOffset() + result.getWroteBytes());
                     service.putRequest(request);
                     service.getWaitNotifyObject().wakeupAll();
                     PutMessageStatus replicaStatus = null;
                     try {
+                        // 同步等待此次producer发送过来的消息是否已经同步到slave
                         replicaStatus = request.future().get(this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout(),
                                 TimeUnit.MILLISECONDS);
                     } catch (InterruptedException | ExecutionException | TimeoutException e) {
@@ -1513,7 +1522,7 @@ public class CommitLog {
     }
 
     /**
-     * 刷盘任务
+     * 刷盘任务、master同步消息到slave
      */
     public static class GroupCommitRequest {
         private final long nextOffset;
@@ -1589,6 +1598,7 @@ public class CommitLog {
                         // two times the flush
                         boolean flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                         for (int i = 0; i < 2 && !flushOK; i++) {
+                            // flush
                             CommitLog.this.mappedFileQueue.flush(0);
                             flushOK = CommitLog.this.mappedFileQueue.getFlushedWhere() >= req.getNextOffset();
                         }

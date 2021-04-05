@@ -58,6 +58,7 @@ public class SubscriptionData implements Comparable<SubscriptionData> {
     // 默认TAG，在subscribe(final String topic, final MessageSelector messageSelector)中可以指定SQL92
     private String expressionType = ExpressionType.TAG;
 
+    // 过滤类源码字符串
     @JSONField(serialize = false)
     private String filterClassSource;
 
