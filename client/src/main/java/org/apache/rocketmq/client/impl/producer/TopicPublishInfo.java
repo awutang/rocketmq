@@ -31,7 +31,7 @@ public class TopicPublishInfo {
     private boolean orderTopic = false;
 
     private boolean haveTopicRouterInfo = false;
-    // topic的消息队列，是选定broker之后的吗？--是的，MessageQueue就是topic与broker的映射关系
+    // topic的消息队列，是选定broker之后的吗？--是的，MessageQueue就是topic与broker的映射关系,list中包括多个brokerName
     private List<MessageQueue> messageQueueList = new ArrayList<MessageQueue>();
     // 每选择一次消息队列，该值加1
     private volatile ThreadLocalIndex sendWhichQueue = new ThreadLocalIndex();

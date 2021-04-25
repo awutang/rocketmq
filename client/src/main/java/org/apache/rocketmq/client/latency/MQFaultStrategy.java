@@ -87,7 +87,7 @@ public class MQFaultStrategy {
                 final String notBestBroker = latencyFaultTolerance.pickOneAtLeast();
                 int writeQueueNums = tpInfo.getQueueIdByBroker(notBestBroker);
                 if (writeQueueNums > 0) {
-                    // 如果这台broker有写队列，则进一步选择相应的队列
+                    // 如果这台notBestBroker有写队列，则进一步选择相应的队列
                     final MessageQueue mq = tpInfo.selectOneMessageQueue();
                     if (notBestBroker != null) {
                         mq.setBrokerName(notBestBroker);

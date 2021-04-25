@@ -207,10 +207,11 @@ public class MQClientInstance {
                         continue;
                     }
 
-                    // 此处根据broker路由注册时设置的读或写队列数目创建MessageQueue对象
+                    // 此处根据broker路由注册时设置的写队列数目创建MessageQueue对象
                     for (int i = 0; i < qd.getWriteQueueNums(); i++) {
                         // queueId范围[0,num)
                         MessageQueue mq = new MessageQueue(topic, qd.getBrokerName(), i);
+                        // 最终将topic路由中所有broker+broker的所有mq都添加到messageQueueList中了
                         info.getMessageQueueList().add(mq);
                     }
                 }
